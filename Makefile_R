@@ -1,0 +1,84 @@
+# If you are new to Makefiles: https://makefiletutorial.com
+
+# Config
+
+RSCRIPT := Rscript --encoding=UTF-8
+
+CONFIG := config/global_cfg.yaml
+
+PULL_WRDS_DATA_CFG := config/pull_wrds_data_cfg.yaml
+
+
+# Refer to `config/global_cfg.yaml` for file locations
+
+# Output Targets
+
+PAPER := $(shell yq -r '.output_paper' $(CONFIG))
+
+PRESENTATION :=  $(shell yq -r '.output_presentation' $(CONFIG))
+
+TARGETS :=  $(PAPER) $(PRESENTATION)
+
+
+# Input Targets
+
+SECRETS := $(shell yq -r '.secrets_file' $(CONFIG))
+
+EXTERNAL_DATA := $(shell yq -r '.fama_french_12' $(CONFIG)) \
+	$(shell yq -r '.fama_french_48' $(CONFIG))
+
+WRDS_DATA := $(shell yq -r '.cstat_us_parquet_file' $(CONFIG))
+
+GENERATED_DATA := $(shell yq -r '.acc_sample' $(CONFIG))
+
+RESULTS := $(shell yq -r '.results_r' $(CONFIG))
+
+
+# Phony Targets 
+
+.phony: all clean very-clean dist-clean
+
+all: $(TARGETS)
+
+clean:
+	rm -f $(TARGETS)
+	rm -f $(RESULTS)
+	rm -f $(GENERATED_DATA)
+
+very-clean: clean
+	rm -f $(WRDS_DATA)
+
+dist-clean: very-clean
+	rm secrets.env
+
+
+# Recipes for intermediate targets
+
+$(SECRETS):
+	@echo "To start, you need to copy _$(SECRETS) to $(SECRETS) and edit it"
+	@false
+
+$(WRDS_DATA): code/R/pull_wrds_data.R code/R/utils.R $(SECRETS) \
+	$(PULL_WRDS_DATA_CFG)  $(CONFIG)
+	$(RSCRIPT) code/R/pull_wrds_data.R
+
+$(GENERATED_DATA): $(WRDS_DATA) $(EXTERNAL_DATA) \
+	code/R/prepare_data.R code/R/utils.R $(CONFIG)
+	$(RSCRIPT) code/R/prepare_data.R
+
+$(RESULTS):	$(GENERATED_DATA) code/R/do_analysis.R code/R/utils.R $(CONFIG)
+	$(RSCRIPT) code/R/do_analysis.R
+
+
+# Recipes for final targets
+
+$(PAPER): doc/paper_r.qmd doc/references.bib $(RESULTS)
+	quarto render doc/paper_r.qmd --quiet
+	mv output/paper_r.pdf $(PAPER)
+	rm -f doc/paper_r.ttt doc/paper_r.fff
+
+$(PRESENTATION): doc/presentation_r.qmd $(RESULTS) \
+	doc/beamer_theme_trr266.sty
+	quarto render doc/presentation_r.qmd --quiet
+	mv output/presentation_r.pdf $(PRESENTATION)
+	rm -rf output/presentation_r_files

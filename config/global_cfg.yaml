@@ -11,7 +11,7 @@ log_level: info
 log_file: stdout
 
 # External data paths
-sample_all_listed: data/external/sample_all_listed.csv
+sample_all_listed: data/external/sample_all_listed_firms.csv
 
 # Result objects
 results_r: output/results.rda

@@ -43,23 +43,6 @@ read_config <- function(config_file) {
 
 global_cfg <- read_config("config/global_cfg.yaml")
 
-read_secrets <- function() {
-  if (!file.exists(global_cfg$secrets_file)) {
-    log_error("Secrets file '{global_cfg$secrets_file}' not found. Exiting.")
-    stop(paste(
-      "Please copy '_{global_cfg$secrets_file}' to '{global_cfg$secrets_file}'",
-      "and edit it to contain your WRDS access data prior to running this code"
-    ))
-  }
-
-  load_dot_env("secrets.env")
-  list(
-    wrds_user = Sys.getenv("WRDS_USERNAME"),
-    wrds_pwd = Sys.getenv("WRDS_PASSWORD")
-  )
-}
-
-
 # --- Setting up logging -------------------------------------------------------
 
 if (!is.na(global_cfg$log_level) && global_cfg$log_level != "") {

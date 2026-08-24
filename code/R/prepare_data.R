@@ -320,6 +320,27 @@ log_info(
 )
 
 
+# --- Winsorize continuous model variables --------------------------------------
+
+# Only ln_total_assets_eur and roa are continuous regressors. Capped (not 
+# dropped) at the 1st/99th percentile. Kept as separate _w columns so the raw 
+# values stay available for descriptives.
+
+winsorized <- sample_all_listed %>%
+  select(ln_total_assets_eur, roa) %>%
+  treat_outliers()
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(
+    ln_total_assets_eur_w = winsorized$ln_total_assets_eur,
+    roa_w = winsorized$roa
+  )
+
+log_info(
+  "Winsorized ln_total_assets_eur: {sum(sample_all_listed$ln_total_assets_eur != sample_all_listed$ln_total_assets_eur_w, na.rm = TRUE)} values capped; ",
+  "roa: {sum(sample_all_listed$roa != sample_all_listed$roa_w, na.rm = TRUE)} values capped."
+)
+
 # --- Clean ownership flag types ------------------------------------------------
 
 sample_all_listed <- sample_all_listed %>%

@@ -328,7 +328,7 @@ log_info(
 
 winsorized <- sample_all_listed %>%
   select(ln_total_assets_eur, roa) %>%
-  treat_outliers()
+  treat_outliers(percentile = 0.05)
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
@@ -374,6 +374,7 @@ sample_all_listed <- sample_all_listed %>%
     # Financials
     total_assets_original, net_income_original, currency_original,
     fx_rate_to_eur, total_assets_eur, net_income_eur, ln_total_assets_eur, roa,
+    ln_total_assets_eur_w, roa_w,
     
     # Ownership
     state_ownership, state_ownership_threshold,

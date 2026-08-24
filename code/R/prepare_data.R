@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Cleans the manually collected sample of listed firms, constructs analysis 
+# Cleans the manually collected sample of listed firms, constructs analysis
 # variables for the ESG disclosure study, and prepares final sample for analysis.
 # ------------------------------------------------------------------------------
 
@@ -115,101 +115,153 @@ log_info(
 )
 
 
-# --- reg_strength_esg_state -----------------------------------------------------
+# --- ESG disclosure regulation variables ---------------------------------------
+#
+# Following Krueger et al., state (government) and stock exchange mandates are
+# tracked separately, and exchange-level voluntary guidance is tracked as its
+# own flag:
+#   mandatory_esg_state    - country-level ESG disclosure mandate (1/0)
+#   mandatory_esg_exchange - stock exchange listing-rule ESG mandate (1/0)
+#   mandatory_esg          - any mandate applies, state or exchange (1/0)
+#   voluntary_esg_exchange - stock exchange publishes voluntary/recommended
+#                             ESG reporting guidance for listed firms (1/0)
+# Comply-or-explain regimes count as mandatory only when the duty attaches
+# automatically at listing. Regimes gated behind a firm's own voluntary
+# adoption of a corporate governance code (Kyrgyzstan's CCG, Latvia's CG
+# Code) are excluded from mandatory_esg_state, since adoption cannot be
+# traced per firm and the obligation is not automatic. Countries/exchanges
+# for which no regulatory source document was reviewed are coded 0 (no
+# mandate/guidance identified), not NA - absence of evidence, not missing
+# data.
+#
+# Combines two 1/0/NA flags: 1 if either is confirmed 1, NA if either input
+# is unresolved and neither is confirmed 1, 0 only if both are confirmed 0.
+combine_flags <- function(a, b) {
+  case_when(
+    (!is.na(a) & a == 1) | (!is.na(b) & b == 1) ~ 1,
+    is.na(a) | is.na(b)                         ~ NA_real_,
+    TRUE                                        ~ 0
+  )
+}
 
-# Country-level ESG disclosure mandate for non-financial firms:
-# 0 = no mandate, 1 = voluntary/recommended, 2 = mandatory
-esg_state_level <- c(
-  KAZ = 0,  # existing state rules apply only to banks/financial firms
-  UZB = 0,  # 2024 mandate exists on paper but not enforced
-  KGZ = 1,  # comply-or-explain for public companies
-  TKM = 0,  # no regulation
-  TJK = 0   # no regulation
-)
+# --- mandatory_esg_state: country-level mandate --------------------------------
 
-# EU CSRD/NFRD only applies above an employee-count threshold ------------------
+esg_state_level <- c(KAZ = 0, UZB = 0, KGZ = 0, TKM = 0, TJK = 0)
 
+# EU CSRD/NFRD-style mandate for EST/LVA/LTU applies above an employee threshold.
 baltic_employee_threshold <- 500
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
     employees_num = suppressWarnings(as.integer(number_of_employees)),
-    reg_strength_esg_state = case_when(
+    mandatory_esg_state = case_when(
       country_iso3 %in% names(esg_state_level) ~ esg_state_level[country_iso3],
       country_iso3 %in% c("EST", "LVA", "LTU") & is.na(employees_num) ~ NA_real_,
       country_iso3 %in% c("EST", "LVA", "LTU") ~
-        if_else(employees_num > baltic_employee_threshold, 2, 0),
+        if_else(employees_num > baltic_employee_threshold, 1, 0),
       TRUE ~ NA_real_
     )
   ) %>%
   select(-employees_num)
 
 
-# --- reg_strength_esg_exchange ----------------------------------------------------
+# --- mandatory_esg_exchange: stock exchange listing-rule mandate ---------------
 
-# Exchange-level ESG disclosure requirement, for exchanges with one flat rule:
-# 0 = no rule identified, 1 = voluntary/recommended, 2 = mandatory
-esg_exchange_level <- c(
-  AIX  = 1,  # voluntary ESG disclosure recommendations
-  KSE  = 1,  # voluntary sustainability guidance
-  BTS  = 0,  # no ESG rule identified
-  UZSE = 0,  # no ESG rule identified
-  RIG  = 1,  # Nasdaq Riga voluntary CSR recommendation
-  VLN  = 1,  # Nasdaq Vilnius voluntary CSR recommendation
-  TLN  = 0   # no Nasdaq Tallinn exchange-level ESG rule identified
+# AIX: mandate applies only to ESG-Labelled/Green Bond issuers; none are in
+# this sample, so all AIX firms are coded 0. VLN: Nasdaq Vilnius Listing
+# Rules mandate ESG disclosure for regulated-market-listed companies (all
+# Nasdaq Vilnius firms in this sample are regulated-market).
+esg_exchange_mandate <- c(
+  AIX  = 0,  # no ESG/green bond issuers in sample
+  KSE  = 0,  # no exchange-level ESG mandate identified
+  BTS  = 0,  # no exchange-level ESG mandate identified
+  UZSE = 0,  # no exchange-level ESG mandate identified
+  RIG  = 0,  # no exchange-level ESG mandate identified (Nasdaq Riga)
+  VLN  = 1,  # mandatory for regulated-market-listed companies
+  TLN  = 0   # no exchange-level ESG mandate identified (Nasdaq Tallinn)
 )
 
-# KASE is the one exchange without a flat rule - its ESG requirement depends
-# on market segment: Main is mandatory, Alternative is voluntary (as of FY2024).
-kase_esg_exchange_level <- function(category) {
+# KASE is the one exchange with a segment-dependent rule: mandatory ESG
+# disclosure for admittance initiators on 'Main' (from 26/09/2022) and on
+# 'Alternative' only from 01/01/2025 - after this sample's FY2024 cutoff, so
+# 'Alternative' is coded 0 here.
+kase_esg_mandate <- function(category) {
   case_when(
-    category == "Main"        ~ 2,
-    category == "Alternative" ~ 1,
+    category == "Main"        ~ 1,
+    category == "Alternative" ~ 0,
     TRUE                      ~ NA_real_
   )
 }
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
-    reg_strength_esg_exchange = case_when(
-      # dual listings: take the stronger of the two applicable rules
+    mandatory_esg_exchange = case_when(
+      # dual listings: mandate applies if either applicable exchange requires it
       grepl("KASE", exchange, fixed = TRUE) & grepl("AIX", exchange, fixed = TRUE) ~
-        pmax(kase_esg_exchange_level(category), esg_exchange_level["AIX"], na.rm = TRUE),
+        combine_flags(kase_esg_mandate(category), esg_exchange_mandate["AIX"]),
       grepl("KSE", exchange, fixed = TRUE) & grepl("BTS", exchange, fixed = TRUE) ~
-        pmax(esg_exchange_level["KSE"], esg_exchange_level["BTS"], na.rm = TRUE),
-      grepl("KASE", exchange, fixed = TRUE) ~ kase_esg_exchange_level(category),
-      exchange %in% names(esg_exchange_level) ~ esg_exchange_level[exchange],
-      grepl("RIG", exchange, fixed = TRUE) ~ esg_exchange_level["RIG"],
-      grepl("VLN", exchange, fixed = TRUE) ~ esg_exchange_level["VLN"],
-      grepl("TLN", exchange, fixed = TRUE) ~ esg_exchange_level["TLN"],
+        combine_flags(esg_exchange_mandate["KSE"], esg_exchange_mandate["BTS"]),
+      grepl("KASE", exchange, fixed = TRUE) ~ kase_esg_mandate(category),
+      exchange %in% names(esg_exchange_mandate) ~ esg_exchange_mandate[exchange],
+      grepl("RIG", exchange, fixed = TRUE) ~ esg_exchange_mandate["RIG"],
+      grepl("VLN", exchange, fixed = TRUE) ~ esg_exchange_mandate["VLN"],
+      grepl("TLN", exchange, fixed = TRUE) ~ esg_exchange_mandate["TLN"],
       TRUE ~ NA_real_
     )
   )
 
 
-# --- reg_strength_fin --------------------------------------------------------------
-
-# Country-level financial disclosure mandate: 0 = no mandate, 1 = voluntary, 2 = mandatory
-fin_state_level <- c(
-  KAZ = 2, UZB = 2, KGZ = 2, EST = 2, LVA = 2, LTU = 2
-)
-
-# Kyrgyzstan's mandate is conditional on OJSC status - overrides the flat lookup.
-kyrgyzstan_fin_level <- function(company_name) {
-  case_when(
-    grepl("OJSC", company_name, fixed = TRUE) ~ 2,
-    TRUE ~ NA_real_
-  )
-}
+# --- mandatory_esg: any ESG disclosure mandate applies --------------------------
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
-    reg_strength_fin = case_when(
-      country_iso3 == "KGZ" ~ kyrgyzstan_fin_level(company_name),
-      country_iso3 %in% names(fin_state_level) ~ fin_state_level[country_iso3],
+    mandatory_esg = combine_flags(mandatory_esg_state, mandatory_esg_exchange)
+  )
+
+
+# --- voluntary_esg_exchange: exchange publishes voluntary ESG guidance ---------
+
+# 1 if the firm's stock exchange has published its own voluntary/recommended
+# ESG reporting guidance for listed firms, 0 if no such guidance was identified. 
+
+esg_exchange_voluntary <- c(
+  AIX  = 1,  # AIX Voluntary Sustainability Reporting Guidance
+  KASE = 1,  # KASE Methodology for Preparing an ESG Report
+  KSE  = 1,  # Kyrgyz Stock Exchange ESG Guidance (2023)
+  BTS  = 0,  # no exchange-level ESG guidance identified
+  UZSE = 0,  # no exchange-level ESG guidance identified
+  RIG  = 0,  # no exchange-level ESG guidance identified
+  VLN  = 0,  # no exchange-level ESG guidance identified
+  TLN  = 0   # no exchange-level ESG guidance identified
+)
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(
+    voluntary_esg_exchange = case_when(
+      # dual listings: guidance applies if either applicable exchange offers it
+      grepl("KASE", exchange, fixed = TRUE) & grepl("AIX", exchange, fixed = TRUE) ~
+        combine_flags(esg_exchange_voluntary["KASE"], esg_exchange_voluntary["AIX"]),
+      grepl("KSE", exchange, fixed = TRUE) & grepl("BTS", exchange, fixed = TRUE) ~
+        combine_flags(esg_exchange_voluntary["KSE"], esg_exchange_voluntary["BTS"]),
+      exchange %in% names(esg_exchange_voluntary) ~ esg_exchange_voluntary[exchange],
+      grepl("RIG", exchange, fixed = TRUE) ~ esg_exchange_voluntary["RIG"],
+      grepl("VLN", exchange, fixed = TRUE) ~ esg_exchange_voluntary["VLN"],
+      grepl("TLN", exchange, fixed = TRUE) ~ esg_exchange_voluntary["TLN"],
       TRUE ~ NA_real_
     )
   )
+
+log_info(
+  "mandatory_esg: {sum(sample_all_listed$mandatory_esg == 1, na.rm = TRUE)} under a mandate, ",
+  "{sum(sample_all_listed$mandatory_esg == 0, na.rm = TRUE)} not, ",
+  "{sum(is.na(sample_all_listed$mandatory_esg))} NA (state {sum(is.na(sample_all_listed$mandatory_esg_state))}, ",
+  "exchange {sum(is.na(sample_all_listed$mandatory_esg_exchange))} unresolved)."
+)
+
+log_info(
+  "voluntary_esg_exchange: {sum(sample_all_listed$voluntary_esg_exchange == 1, na.rm = TRUE)} with guidance, ",
+  "{sum(sample_all_listed$voluntary_esg_exchange == 0, na.rm = TRUE)} without."
+)
 
 
 # --- Currency conversion to EUR -----------------------------------------------
@@ -268,6 +320,16 @@ log_info(
 )
 
 
+# --- Clean ownership flag types ------------------------------------------------
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(
+    state_ownership = suppressWarnings(as.integer(state_ownership)),
+    foreign_ownership = suppressWarnings(as.integer(foreign_ownership)),
+    individual_ownership = suppressWarnings(as.integer(individual_ownership))
+  )
+
+
 # --- Final column selection and ordering --------------------------------------
 
 sample_all_listed <- sample_all_listed %>%
@@ -281,25 +343,25 @@ sample_all_listed <- sample_all_listed %>%
     # Time
     year, listed_since, year_founded, soviet_era,
     
-    # Disclosure flags and outcome variable
+    # Disclosure behaviour
     annual_report, annual_fin_report, interim_fin_reports,
     ESG_info_annual_report, ESG_separate_report, any_esg,
     
     # International exposure
     cross_listed, cross_listed_since, un_global_compact_joined,
-    orbis_data, lseg_esg_data,
     
     # Financials
     total_assets_original, net_income_original, currency_original,
-    fx_rate_to_eur, total_assets_eur, net_income_eur, ln_total_assets_eur, roa, 
+    fx_rate_to_eur, total_assets_eur, net_income_eur, ln_total_assets_eur, roa,
     
     # Ownership
     state_ownership, state_ownership_threshold,
     foreign_ownership, foreign_ownership_threshold,
     individual_ownership, individual_ownership_threshold,
     
-    # Regulation strength (constructed)
-    reg_strength_esg_state, reg_strength_esg_exchange, reg_strength_fin
+    # ESG disclosure regulation (constructed)
+    mandatory_esg_state, mandatory_esg_exchange, mandatory_esg,
+    voluntary_esg_exchange
   )
 
 log_info(

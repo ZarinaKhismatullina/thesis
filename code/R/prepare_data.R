@@ -122,7 +122,7 @@ log_info(
 esg_state_level <- c(
   KAZ = 0,  # existing state rules apply only to banks/financial firms
   UZB = 0,  # 2024 mandate exists on paper but not enforced
-  KGZ = 2,  # mandatory for public companies
+  KGZ = 1,  # comply-or-explain for public companies
   TKM = 0,  # no regulation
   TJK = 0   # no regulation
 )
@@ -249,6 +249,25 @@ log_info(
 )
 
 
+# --- ln(Size) -----------------------------------------------------------------
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(
+    ln_total_assets_eur = log(total_assets_eur)
+  )
+
+
+# --- Return on assets ---------------------------------------------------------
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(roa = net_income_eur / total_assets_eur)
+
+log_info(
+  "roa: {sum(!is.na(sample_all_listed$roa))} of {nrow(sample_all_listed)} firms have a value; ",
+  "{sum(is.na(sample_all_listed$roa))} NA (missing total_assets or net_income)."
+)
+
+
 # --- Final column selection and ordering --------------------------------------
 
 sample_all_listed <- sample_all_listed %>%
@@ -272,7 +291,7 @@ sample_all_listed <- sample_all_listed %>%
     
     # Financials
     total_assets_original, net_income_original, currency_original,
-    fx_rate_to_eur, total_assets_eur, net_income_eur,
+    fx_rate_to_eur, total_assets_eur, net_income_eur, ln_total_assets_eur, roa, 
     
     # Ownership
     state_ownership, state_ownership_threshold,

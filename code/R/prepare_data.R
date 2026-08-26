@@ -264,6 +264,30 @@ log_info(
 )
 
 
+# --- Country-level institutional/economic controls (WGI, GDP per capita) ------
+
+country_chars <- read_csv(
+  global_cfg$country_characteristics,
+  col_types = cols()
+) %>%
+  filter(!is.na(`Country Code`)) %>%
+  transmute(
+    country_iso3 = `Country Code`,
+    gdp_per_capita = `GDP per capita, PPP (current international $)`,
+    wgi_rule_of_law = `Rule of Law - Governance estimate (approx. -2.5 to +2.5)`
+  )
+
+sample_all_listed <- sample_all_listed %>%
+  left_join(country_chars, by = "country_iso3") %>%
+  mutate(ln_gdp_per_capita = log(gdp_per_capita))
+
+log_info(
+  "Country-level controls: {sum(!is.na(sample_all_listed$wgi_rule_of_law))} of ",
+  "{nrow(sample_all_listed)} firms matched to WGI/GDP data ",
+  "({sum(is.na(sample_all_listed$wgi_rule_of_law))} unmatched)."
+)
+
+
 # --- Currency conversion to EUR -----------------------------------------------
 
 sample_all_listed <- sample_all_listed %>%
@@ -323,7 +347,7 @@ log_info(
 # --- Winsorize continuous model variables --------------------------------------
 
 # Only ln_total_assets_eur and roa are continuous regressors. Capped (not 
-# dropped) at the 1st/99th percentile. Kept as separate _w columns so the raw 
+# dropped) at the 5st/95th percentile. Kept as separate _w columns so the raw 
 # values stay available for descriptives.
 
 winsorized <- sample_all_listed %>%
@@ -383,7 +407,10 @@ sample_all_listed <- sample_all_listed %>%
     
     # ESG disclosure regulation (constructed)
     mandatory_esg_state, mandatory_esg_exchange, mandatory_esg,
-    voluntary_esg_exchange
+    voluntary_esg_exchange,
+    
+    # Country-level controls
+    gdp_per_capita, ln_gdp_per_capita, wgi_rule_of_law
   )
 
 log_info(

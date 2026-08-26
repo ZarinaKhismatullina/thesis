@@ -1,179 +1,564 @@
 # ------------------------------------------------------------------------------
-# Prepares figures and tables for our showcase project, exploring discretionary
-# accruals.
-#
-# See LICENSE file for licensing information.
+# Runs analysis and prepares tables.
 # ------------------------------------------------------------------------------
-
-
-# --- Read config --------------------------------------------------------------
 
 source("code/R/utils.R")
 
 
-# --- Read TRR 266 ggplot2 theme -----------------------------------------------
+# --- Sample selection and composition, by region/country/exchange -------------
 
-source("code/R/theme_trr.R")
+exchange_map <- tribble(
+  ~exchange, ~country,       ~region,
+  "KASE",    "Kazakhstan",   "Central Asia",
+  "AIX",     "Kazakhstan",   "Central Asia",
+  "UZSE",    "Uzbekistan",   "Central Asia",
+  "KSE",     "Kyrgyzstan",   "Central Asia",
+  "BTS",     "Kyrgyzstan",   "Central Asia",
+  "AGB",     "Turkmenistan", "Central Asia",
+  "CASE",    "Tajikistan",   "Central Asia",
+  "TLN",     "Estonia",      "Baltic States",
+  "RIG",     "Latvia",       "Baltic States",
+  "VLN",     "Lithuania",    "Baltic States"
+)
+exchanges <- exchange_map$exchange
 
+sample_selection <- tribble(
+  ~step,                                                                              ~KASE, ~AIX, ~UZSE, ~KSE, ~BTS, ~AGB, ~CASE, ~TLN, ~RIG, ~VLN,
+  "Initial number of observations (total listed firms)",                                 92,   53,   92,   38,   16,    7,    0,   31,   13,   25,
+  "Less: Foreign listings",                                                              -7,  -11,    0,    0,    0,    0,    0,    0,    0,    0,
+  "Less: Non-equity instruments (bonds), ETFs",                                            0,  -29,  -13,  -12,   -2,   -2,    0,    0,    0,    0,
+  "Less: Duplicate observations (companies with more than one ticker/ISIN)",             -13,   -2,    0,    0,    0,    0,    0,    0,    0,    0,
+  "Less: Financial companies",                                                           -22,    0,  -28,  -12,   -3,   -5,    0,   -4,   -3,   -3,
+  "Less: Duplicate observations (companies listed on more than one domestic exchange)",    0,   -9,    0,    0,   -3,    0,    0,    0,    0,    0,
+  "Less: Irrelevant market categories/segments",                                            0,    0,    0,   -2,    0,    0,    0,  -11,   -5,   -3,
+  "Less: Not listed as of FY2024 (including missing listing date)",                            -2,    0,   -8,   -2,   -8,    0,    0,   -1,   -1,    0
+)
 
-# --- Create tables and figures ------------------------------------------------
+# Total per exchange: initial count plus all attrition steps above.
+total_exchange <- sample_selection %>%
+  summarise(across(all_of(exchanges), sum)) %>%
+  mutate(step = "Total number of observations per stock exchange", .before = 1)
 
-log_info("Reading and preparing data...")
-smp <- read_parquet(global_cfg$acc_sample)
-
-graph_boxplot <- function(df) {
-  df <- df %>%
-    select(fyear, mj_da, dd_da) %>%
-    filter(!is.na(dd_da)) %>%
-    pivot_longer(
-      any_of(c("mj_da", "dd_da")), names_to = "type", values_to = "da"
-    )
-
-  ggplot(
-    df,
-    aes(x = fyear, y = da, group = interaction(type, fyear), color = type)
-  ) +
-    geom_boxplot() +
-    labs(
-      x = "Fiscal year", y = NULL, color = "Type of discretionary accruals"
-    ) +
-    scale_color_trr266_d(labels = c("Dechow and Dichev", "Modified Jones")) +
-    theme_trr(legend = TRUE)
+total_row <- function(label, group_var = NULL) {
+  long <- total_exchange %>%
+    select(-step) %>%
+    pivot_longer(everything(), names_to = "exchange", values_to = "n") %>%
+    mutate(exchange = factor(exchange, levels = exchanges)) %>%
+    left_join(exchange_map, by = "exchange") %>%
+    arrange(exchange) %>%
+    mutate(grp = if (is.null(group_var)) "all" else .data[[group_var]])
+  
+  long %>%
+    group_by(grp) %>%
+    mutate(n = if_else(exchange == first(exchange), sum(n), NA_integer_)) %>%
+    ungroup() %>%
+    select(exchange, n) %>%
+    pivot_wider(names_from = exchange, values_from = n) %>%
+    mutate(step = label, .before = 1)
 }
 
-smp_da <- smp %>%
+sample_selection <- bind_rows(
+  sample_selection,
+  total_exchange,
+  total_row("Total number of observations per country", "country"),
+  total_row("Total number of observations per region", "region"),
+  total_row("Grand total (all regions)")
+)
+
+tab_sample_selection <- sample_selection %>%
+  gt(rowname_col = "step") %>%
+  # Zero -> "-", negative -> "(n)", NA -> blank - standard attrition-table
+  # formatting; kept here since it's data formatting, not a note/title.
+  fmt(
+    columns = all_of(exchanges),
+    fns = function(x) case_when(
+      is.na(x) ~ "", x == 0 ~ "-", x < 0 ~ paste0("(", abs(x), ")"),
+      TRUE ~ as.character(x)
+    )
+  ) %>%
+  tab_spanner(label = "Kazakhstan",   columns = c(KASE, AIX), id = "kaz") %>%
+  tab_spanner(label = "Uzbekistan",   columns = c(UZSE),      id = "uzb") %>%
+  tab_spanner(label = "Kyrgyzstan",   columns = c(KSE, BTS),  id = "kgz") %>%
+  tab_spanner(label = "Turkmenistan", columns = c(AGB),       id = "tkm") %>%
+  tab_spanner(label = "Tajikistan",   columns = c(CASE),      id = "tjk") %>%
+  tab_spanner(label = "Estonia",      columns = c(TLN),       id = "est") %>%
+  tab_spanner(label = "Latvia",       columns = c(RIG),       id = "lva") %>%
+  tab_spanner(label = "Lithuania",    columns = c(VLN),       id = "ltu") %>%
+  tab_spanner(label = "Central Asia",  spanners = c("kaz", "uzb", "kgz", "tkm", "tjk")) %>%
+  tab_spanner(label = "Baltic States", spanners = c("est", "lva", "ltu"))
+
+
+# --- Read data ----------------------------------------------------------------
+
+log_info("Reading data...")
+smp <- read_parquet(global_cfg$base_sample)
+
+
+# --- Disclosure coverage by region and country --------------------------------
+
+to01 <- function(x) suppressWarnings(as.integer(x))
+
+disclosure_counts <- function(data) {
+  data %>%
+    summarise(
+      N = n(),
+      `Annual report disclosed` = sum(to01(annual_report) == 1, na.rm = TRUE),
+      `Any ESG information disclosed` = sum(to01(any_esg) == 1, na.rm = TRUE),
+      `(a) Standalone ESG report disclosed` = sum(to01(ESG_separate_report) == 1, na.rm = TRUE),
+      `(b) ESG information disclosed within annual report` = sum(to01(ESG_info_annual_report) == 1, na.rm = TRUE),
+      `(c) Both (a) and (b) disclosed` = sum(
+        to01(ESG_separate_report) == 1 & to01(ESG_info_annual_report) == 1,
+        na.rm = TRUE
+      ),
+      `Annual financial report disclosed` = sum(to01(annual_fin_report) == 1, na.rm = TRUE),
+      `Interim financial report disclosed` = sum(to01(interim_fin_reports) == 1, na.rm = TRUE)
+    ) %>%
+    pivot_longer(everything(), names_to = "step", values_to = "n")
+}
+
+country_counts <- smp %>%
+  group_by(country) %>%
+  group_modify(~ disclosure_counts(.x)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = country, values_from = n)
+
+region_counts <- smp %>%
+  group_by(region) %>%
+  group_modify(~ disclosure_counts(.x)) %>%
+  ungroup() %>%
+  mutate(
+    region = if_else(region == "Central Asia", "Central Asia (Total)", "Baltic States (Total)")
+  ) %>%
+  pivot_wider(names_from = region, values_from = n)
+
+all_counts <- disclosure_counts(smp) %>%
+  mutate(country = "All Countries (Total)") %>%
+  pivot_wider(names_from = country, values_from = n)
+
+# Fixed row order, independent of how the joins below happen to sort things.
+step_order <- c(
+  "N", "Annual report disclosed", "Any ESG information disclosed",
+  "(a) Standalone ESG report disclosed", "(b) ESG information disclosed within annual report", 
+  "(c) Both (a) and (b) disclosed", "Annual financial report disclosed", 
+  "Interim financial report disclosed"
+)
+
+tab_disclosure_coverage <- country_counts %>%
+  left_join(region_counts, by = "step") %>%
+  left_join(all_counts, by = "step") %>%
   select(
-    gvkey, fyear, ff12_ind, mj_da, dd_da, ln_ta, ln_mktcap, mtb,
-    ebit_avgta, sales_growth
-  )
+    step, Kazakhstan, Uzbekistan, Kyrgyzstan, `Central Asia (Total)`,
+    Estonia, Latvia, Lithuania, `Baltic States (Total)`, `All Countries (Total)`
+  ) %>%
+  mutate(step = factor(step, levels = step_order)) %>%
+  arrange(step) %>%
+  mutate(step = as.character(step)) %>%
+  gt(rowname_col = "step")
 
-smp_da <- smp_da[is.finite(rowSums(smp_da %>% select(-gvkey, -ff12_ind))), ]
 
-smp_da <- treat_outliers(smp_da, by = "fyear")
+# --- Restrict to the common regression-ready sample -----------------------------
 
-log_info("Preparing figures...")
-
-fig_boxplot_full <- graph_boxplot(smp)
-fig_boxplot_smp <- graph_boxplot(smp_da)
-
-fig_scatter_md_dd <- ggplot(smp_da, aes(x = mj_da, y = dd_da)) +
-  geom_bin2d(
-    aes(fill = stat(log(count))),  bins = c(100, 100)
-  ) +
-  labs(x = "Modified Jones DA", y = "Dechow and Dichev DA") +
-  scale_fill_trr266_c() +
-  theme_trr(axis_y_horizontal = FALSE)
-
-fig_scatter_dd_lnta <- ggplot(smp_da, aes(x = ln_ta, y = dd_da)) +
-  geom_bin2d(
-    aes(fill = stat(log(count))),  bins = c(100, 100)
-  ) +
-  labs(x = "ln(Total Assets)", y = "Dechow and Dichev DA") +
-  scale_fill_trr266_c() +
-  theme_trr(axis_y_horizontal = FALSE)
-
-fig_scatter_dd_roa <- ggplot(smp_da, aes(x = ebit_avgta, y = dd_da)) +
-  geom_bin2d(
-    aes(fill = stat(log(count))),  bins = c(100, 100)
-  ) +
-  labs(x = "Return on Assets", y = "Dechow and Dichev DA") +
-  scale_fill_trr266_c() +
-  theme_trr(axis_y_horizontal = FALSE)
-
-fig_scatter_dd_salesgr <- ggplot(smp_da, aes(x = sales_growth, y = dd_da)) +
-  geom_bin2d(
-    aes(fill = stat(log(count))),  bins = c(100, 100)
-  ) +
-  labs(x = "Sales Growth", y = "Dechow and Dichev DA") +
-  scale_fill_trr266_c() +
-  theme_trr(axis_y_horizontal = FALSE)
-
-log_info("Preparing tables...")
-
-var_names <- tibble(
-  var_name = names(smp_da %>% select(-gvkey, -fyear, -ff12_ind)),
-  label = cdesc_rnames <- c(
-    "Modified Jones DA",
-    "Dechow and Dichev DA",
-    "Ln(Total assets)",
-    "Ln(Market capitalization)",
-    "Market to book",
-    "Return on assets",
-    "Sales growth"
-  )
+# Descriptive statistics, correlations, and regressions all need to describe
+# the same set of firms. Complete-case filter on the union of variables used
+# across the base equation and its alternate specifications.
+reg_vars <- c(
+  "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
+  "voluntary_esg_exchange", "foreign_ownership", "sensitive_industry",
+  "state_ownership", "ln_total_assets_eur_w", "roa_w",
+  "region", "wgi_rule_of_law", "ln_gdp_per_capita"
 )
 
-N <- function(x) (format(sum(!is.na(x)), big.mark = ","))
-desc_smp <- smp_da %>% select(-c(fyear, gvkey, ff12_ind))
-colnames(desc_smp) <- var_names$label
-tab_desc_stat <- datasummary(
-  All(desc_smp) ~ N + Mean + SD + Min + P25 + Median + P75 + Max, 
-  data = desc_smp, fmt = 3, output = "gt"
+n_before <- nrow(smp)
+smp_reg <- smp %>%
+  drop_na(all_of(reg_vars)) %>%
+  mutate(region = factor(region, levels = c("Baltics", "Central Asia")))
+
+log_info(
+  "Regression-ready sample: {nrow(smp_reg)} of {n_before} firms have complete ",
+  "data across all {length(reg_vars)} model variables ",
+  "({n_before - nrow(smp_reg)} dropped)."
 )
 
 
-rlabels <- paste0(
-  LETTERS[1:nrow(var_names)], ": ", colnames(desc_smp)
-)
-clabels <- c(" ", LETTERS[1:nrow(var_names)])
-names(clabels) <- c(" ", rlabels)
-colnames(desc_smp) <- rlabels
-tab_corr <-datasummary_correlation(
-  desc_smp, method = "pearspear", output = "gt"
-) %>% cols_label(!!!clabels)
+# --- Shared helpers ---------------------------------------------------------------
 
-mods <- feols(
-  c(mj_da, dd_da) ~ ln_ta + mtb + ebit_avgta + sales_growth | gvkey + fyear,
-  smp_da, cluster = c("gvkey", "fyear")
-)
-for (i in 1:2) {
-  mods[[i]]$singletons <- mods[[i]]$nobs_orig - mods[[i]]$nobs
+star_label <- function(p) {
+  case_when(p < 0.01 ~ "***", p < 0.05 ~ "**", p < 0.10 ~ "*", TRUE ~ "")
 }
 
-names(mods) <- var_names$label[1:2]
-ar <- tibble(
-  col1 = c(
-    "Observations", "Singletons dropped", "Observations used", 
-    "Fixed Effects", "SE Clustered"
+# Central Asia minus Baltics mean difference, with significance stars from a
+# two-sample t-test. Applied identically to binary (0/1) and continuous
+# variables.
+mean_diff <- function(x, region) {
+  test <- tryCatch(t.test(x ~ region), error = function(e) NULL)
+  if (is.null(test)) return("\u2014")
+  diff <- unname(
+    test$estimate["mean in group Central Asia"] -
+      test$estimate["mean in group Baltics"]
+  )
+  paste0(sprintf("%.3f", diff), star_label(test$p.value))
+}
+
+group_stats <- function(x) {
+  tibble(
+    N = sum(!is.na(x)), Mean = mean(x, na.rm = TRUE), SD = sd(x, na.rm = TRUE),
+    P5 = quantile(x, 0.05, na.rm = TRUE), Median = median(x, na.rm = TRUE),
+    P95 = quantile(x, 0.95, na.rm = TRUE)
+  )
+}
+
+group_order <- c("Disclosure variables", "Regulatory variables", "Firm characteristics")
+
+
+# --- Panel A: binary variables ---------------------------------------------------
+
+binary_vars <- tibble(
+  var_name = c(
+    "annual_report",
+    "any_esg", "ESG_info_annual_report", "ESG_separate_report",
+    "annual_fin_report",
+    "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
+    "voluntary_esg_exchange",
+    "sensitive_industry", "soviet_era", "state_ownership",
+    "foreign_ownership", "individual_ownership"
   ),
-  col2 = c(
-    format(mods[[1]]$nobs_orig, big.mark = ","),
-    format(mods[[1]]$singletons, big.mark = ","),
-    format(mods[[1]]$nobs, big.mark = ","),
-    "Firm and Year", "Firm and Year"
+  label = c(
+    "Annual Report",
+    "ESG Disclosure", "  ESG in Annual Report", "  ESG Standalone Report",
+    "Financial Disclosure",
+    "Mandatory ESG", "Mandatory ESG (State)", "Mandatory ESG (Exchange)",
+    "ESG Guidance (Exchange)",
+    "Sensitive Industry", "Soviet-Era Firm", "State Ownership",
+    "Foreign Ownership", "Individual Ownership"
   ),
-  col3 = c(
-    format(mods[[2]]$nobs_orig, big.mark = ","),
-    format(mods[[2]]$singletons, big.mark = ","),
-    format(mods[[2]]$nobs, big.mark = ","),
-    "Firm and Year", "Firm and Year"
+  group = c(
+    rep("Disclosure variables", 5),
+    rep("Regulatory variables", 4),
+    rep("Firm characteristics", 5)
   )
 )
-attr(ar, "position") <- 9:13
 
-tab_regression <- modelsummary(
-  mods, stars = c(`***` = 0.01, `**` = 0.05, `*` = 0.1),
-  estimate = "{estimate}{stars}",
-  add_rows = ar,
-  gof_map = list(
-    list(
-      raw = "adj.r.squared", 
-      clean = "Adj. R² (overall)", 
-      fmt = function(x) sprintf("%.3f", x)
-    ),
-    list(
-      raw = "r2.within.adjusted", clean = "Adj. R² (within)", 
-      fmt = function(x) sprintf("%.3f", x)
-    )
+binary_row <- function(var, label) {
+  x <- smp_reg[[var]]
+  r <- smp_reg$region
+  tibble(
+    label = label,
+    N_full = sum(!is.na(x)), Mean_full = mean(x, na.rm = TRUE),
+    N_ca = sum(!is.na(x[r == "Central Asia"])),
+    Mean_ca = mean(x[r == "Central Asia"], na.rm = TRUE),
+    N_baltics = sum(!is.na(x[r == "Baltics"])),
+    Mean_baltics = mean(x[r == "Baltics"], na.rm = TRUE),
+    Diff = mean_diff(x, r)
+  )
+}
+
+tab_desc_panel_a <- map2_dfr(binary_vars$var_name, binary_vars$label, binary_row) %>%
+  left_join(binary_vars %>% select(label, group), by = "label") %>%
+  gt(groupname_col = "group", rowname_col = "label") %>%
+  fmt_number(columns = c(Mean_full, Mean_ca, Mean_baltics), decimals = 3) %>%
+  cols_label(
+    N_full = "N", Mean_full = "Mean", N_ca = "N", Mean_ca = "Mean",
+    N_baltics = "N", Mean_baltics = "Mean",
+    Diff = "Diff (Central Asia \u2212 Baltics)"
+  ) %>%
+  tab_spanner(label = "Full Sample", columns = c(N_full, Mean_full)) %>%
+  tab_spanner(label = "Central Asia", columns = c(N_ca, Mean_ca)) %>%
+  tab_spanner(label = "Baltics", columns = c(N_baltics, Mean_baltics)) %>%
+  row_group_order(groups = group_order)
+
+
+# --- Panel B: continuous variables (winsorized at 5%/95%) ------------------------
+
+continuous_vars <- tibble(
+  var_name = c("ln_total_assets_eur_w", "roa_w"),
+  label = c("ln(Total Assets)", "ROA")
+)
+
+continuous_block <- function(var, label) {
+  x <- smp_reg[[var]]
+  r <- smp_reg$region
+  bind_rows(
+    group_stats(x) %>%
+      mutate(row_label = paste(label, "\u2013 Full Sample"), Diff = mean_diff(x, r)),
+    group_stats(x[r == "Central Asia"]) %>%
+      mutate(row_label = paste(label, "\u2013 Central Asia"), Diff = ""),
+    group_stats(x[r == "Baltics"]) %>%
+      mutate(row_label = paste(label, "\u2013 Baltics"), Diff = "")
+  )
+}
+
+tab_desc_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label, continuous_block) %>%
+  select(row_label, N, Mean, SD, P5, Median, P95, Diff) %>%
+  gt(rowname_col = "row_label") %>%
+  fmt_number(columns = c(Mean, SD, P5, Median, P95), decimals = 3) %>%
+  cols_label(Diff = "Diff (Central Asia \u2212 Baltics)")
+
+
+# --- Correlation table -------------------------------------------------------
+
+# Pearson correlations only. With most variables binary, Spearman and Pearson
+# are mathematically identical for any binary-binary pair (ranking a 0/1
+# variable doesn't change it), so a dual Pearson/Spearman matrix would be
+# redundant here.
+
+corr_vars <- tibble(
+  var_name = c(
+    "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
+    "voluntary_esg_exchange", "sensitive_industry", "foreign_ownership",
+    "state_ownership", "ln_total_assets_eur_w", "roa_w",
+    "wgi_rule_of_law", "ln_gdp_per_capita"
   ),
-  coef_rename = var_names$label[c(3, 5:7)],
+  label = c(
+    "ESG Disclosure", "Mandatory ESG", "Mandatory ESG (State)",
+    "Mandatory ESG (Exchange)", "ESG Guidance (Exchange)", "Sensitive Industry",
+    "Foreign Ownership", "State Ownership", "ln(Total Assets)", "ROA",
+    "WGI: Rule of Law", "ln(GDP per capita)"
+  )
+)
+
+# Number labels keep the matrix compact - full names appear once as row
+# labels (stub), columns are just referenced by number.
+rlabels <- paste0("(", seq_len(nrow(corr_vars)), ") ", corr_vars$label)
+
+corr_mat <- smp_reg %>% select(all_of(corr_vars$var_name))
+colnames(corr_mat) <- rlabels
+
+# Lower-triangular Pearson matrix with significance stars, computed pairwise
+# via cor.test() so p-values are available for star_label(); upper triangle
+# left blank since it's a mirror image of the lower one.
+pearson_with_stars <- function(data) {
+  n <- ncol(data)
+  out <- matrix("", n, n, dimnames = list(colnames(data), colnames(data)))
+  for (i in 1:n) {
+    for (j in 1:n) {
+      if (i == j) {
+        out[i, j] <- "1.000"
+      } else if (i > j) {
+        test <- cor.test(data[[i]], data[[j]])
+        out[i, j] <- paste0(sprintf("%.3f", test$estimate), star_label(test$p.value))
+      }
+    }
+  }
+  as_tibble(out, rownames = " ")
+}
+
+tab_corr <- pearson_with_stars(corr_mat) %>%
+  gt(rowname_col = " ") %>%
+  cols_label(!!!setNames(paste0("(", seq_len(nrow(corr_vars)), ")"), rlabels))
+
+
+# --- Regression analysis ------------------------------------------------------
+
+# Linear probability models (OLS) with HC1-robust standard errors. Eight 
+# specifications, each testing one idea from the design discussion, all 
+# estimated on the same smp_reg sample for comparability across columns.
+
+mods <- list(
+  "(1)" = lm(any_esg ~ mandatory_esg + foreign_ownership + sensitive_industry +
+               ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(2)" = lm(any_esg ~ mandatory_esg_state + mandatory_esg_exchange +
+               foreign_ownership + sensitive_industry + ln_total_assets_eur_w +
+               roa_w, data = smp_reg),
+  "(3)" = lm(any_esg ~ mandatory_esg + voluntary_esg_exchange + foreign_ownership +
+               sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(4)" = lm(any_esg ~ region + foreign_ownership + sensitive_industry +
+               ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(5)" = lm(any_esg ~ mandatory_esg + region + foreign_ownership +
+               sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(6)" = lm(any_esg ~ mandatory_esg + wgi_rule_of_law + foreign_ownership +
+               sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(7)" = lm(any_esg ~ mandatory_esg + state_ownership + foreign_ownership +
+               sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(8)" = lm(any_esg ~ mandatory_esg + ln_gdp_per_capita + foreign_ownership +
+               sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg)
+)
+
+# --- Variance Inflation Factors -------------------------------------------------
+# Checked for every specification that combines Mandatory ESG with a second
+# regulation- or institutional-quality-adjacent variable, since that's where
+# entangled identification (rather than plain collinearity) is a real risk -
+# see Column (8)'s GDP/Kazakhstan interpretation.
+
+vif_check_models <- c("(2)", "(3)", "(5)", "(6)", "(7)", "(8)")
+
+for (m in vif_check_models) {
+  vifs <- car::vif(mods[[m]])
+  log_info(
+    "VIF, Model {m}: {paste(names(vifs), round(vifs, 2), sep = '=', collapse = ', ')}"
+  )
+}
+
+
+# --- Wald test: State Ownership vs. Foreign Ownership (Column 7 only) ----------
+# Reported in text/notes, not as a table row - Column (7) is the only
+# specification where both coefficients coexist.
+wald_7 <- car::linearHypothesis(
+  mods[["(7)"]], "state_ownership = foreign_ownership",
+  vcov. = sandwich::vcovHC(mods[["(7)"]], type = "HC1")
+)
+wald_7_p <- wald_7$`Pr(>F)`[2]
+log_info("Wald test, Column (7) State = Foreign Ownership: p = {round(wald_7_p, 3)}")
+
+var_labels <- c(
+  "(Intercept)"             = "Intercept",
+  "mandatory_esg"           = "Mandatory ESG",
+  "mandatory_esg_state"     = "Mandatory ESG (State)",
+  "mandatory_esg_exchange"  = "Mandatory ESG (Exchange)",
+  "voluntary_esg_exchange"  = "ESG Guidance (Exchange)",
+  "regionCentral Asia"      = "Region (Central Asia)",
+  "wgi_rule_of_law"         = "WGI: Rule of Law",
+  "state_ownership"         = "State Ownership",
+  "ln_gdp_per_capita"       = "ln(GDP per capita)",
+  "foreign_ownership"       = "Foreign Ownership",
+  "sensitive_industry"      = "Sensitive Industry",
+  "ln_total_assets_eur_w"   = "ln(Total Assets)",
+  "roa_w"                   = "ROA"
+)
+
+tab_reg <- modelsummary(
+  mods,
+  vcov = "HC1",
+  stars = c(`***` = 0.01, `**` = 0.05, `*` = 0.10),
+  estimate = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_map = var_labels,
+  gof_map = list(
+    list(raw = "nobs", clean = "Observations", fmt = 0),
+    list(raw = "adj.r.squared", clean = "Adj. R\u00b2", fmt = function(x) sprintf("%.3f", x))
+  ),
   output = "gt"
 )
 
-log_info("Done. Storing output objects in '{global_cfg$results_r}'")
-save(
-  list = c(
-    "smp_da", "var_names", ls(pattern = "^fig_*"), ls(pattern = "^tab_*")
-  ),
-  file = global_cfg$results_r
+
+# --- Robustness: Firth's penalized logit (Table 4) ----------------------------
+
+# Firth's penalized logit, not plain logit: Kyrgyzstan is a fully deterministic
+# subgroup (0/10 firms disclose), which risks unstable estimates under ordinary
+# maximum-likelihood logit. Firth's penalty keeps estimates finite even under
+# this kind of near-complete separation. Same eight specifications and same
+# smp_reg sample.
+
+tidy.logistf <- function(x, ...) {
+  tibble(
+    term = names(x$coefficients),
+    estimate = unname(x$coefficients),
+    std.error = sqrt(diag(x$var)),
+    p.value = unname(x$prob)
+  )
+}
+
+glance.logistf <- function(x, ...) {
+  tibble(
+    nobs = x$n,
+    pseudo_r2 = 1 - unname(x$loglik["full"] / x$loglik["null"])
+  )
+}
+
+mods_logit <- list(
+  "(1)" = logistf(any_esg ~ mandatory_esg + foreign_ownership + sensitive_industry +
+                    ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(2)" = logistf(any_esg ~ mandatory_esg_state + mandatory_esg_exchange +
+                    foreign_ownership + sensitive_industry + ln_total_assets_eur_w +
+                    roa_w, data = smp_reg),
+  "(3)" = logistf(any_esg ~ mandatory_esg + voluntary_esg_exchange + foreign_ownership +
+                    sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(4)" = logistf(any_esg ~ region + foreign_ownership + sensitive_industry +
+                    ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(5)" = logistf(any_esg ~ mandatory_esg + region + foreign_ownership +
+                    sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(6)" = logistf(any_esg ~ mandatory_esg + wgi_rule_of_law + foreign_ownership +
+                    sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(7)" = logistf(any_esg ~ mandatory_esg + state_ownership + foreign_ownership +
+                    sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg),
+  "(8)" = logistf(any_esg ~ mandatory_esg + ln_gdp_per_capita + foreign_ownership +
+                    sensitive_industry + ln_total_assets_eur_w + roa_w, data = smp_reg)
 )
+
+# Pseudo R2 added manually via add_rows rather than gof_map
+
+pseudo_r2_row <- tibble(
+  term = "Pseudo R\u00b2",
+  `(1)` = sprintf("%.3f", glance(mods_logit[["(1)"]])$pseudo_r2),
+  `(2)` = sprintf("%.3f", glance(mods_logit[["(2)"]])$pseudo_r2),
+  `(3)` = sprintf("%.3f", glance(mods_logit[["(3)"]])$pseudo_r2),
+  `(4)` = sprintf("%.3f", glance(mods_logit[["(4)"]])$pseudo_r2),
+  `(5)` = sprintf("%.3f", glance(mods_logit[["(5)"]])$pseudo_r2),
+  `(6)` = sprintf("%.3f", glance(mods_logit[["(6)"]])$pseudo_r2),
+  `(7)` = sprintf("%.3f", glance(mods_logit[["(7)"]])$pseudo_r2),
+  `(8)` = sprintf("%.3f", glance(mods_logit[["(8)"]])$pseudo_r2)
+)
+
+tab_reg_logit <- modelsummary(
+  mods_logit,
+  stars = c(`***` = 0.01, `**` = 0.05, `*` = 0.10),
+  estimate = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_map = var_labels,
+  gof_map = list(list(raw = "nobs", clean = "Observations", fmt = 0)),
+  add_rows = pseudo_r2_row,
+  output = "gt"
+)
+
+
+# --- Heterogeneity by region --------------------------------------------------
+
+# Central Asia and Baltics run the identical lean specification in Column (1)
+# vs. (2) for direct comparability; Column (3) adds Soviet-era founding as an
+# extra channel, Baltics-only, since soviet_era is a structural constant in
+# Central Asia (= 0 for all 103 firms). Column headers are numbered, matching
+# tab_reg/tab_reg_logit; which region each column uses is reported via a
+# "Region" row - the same convention Krueger et al. use for their "Sample"
+# row (Table 7) to mark which subsample a column runs on.
+
+smp_ca <- smp_reg %>% filter(region == "Central Asia")
+smp_balt <- smp_reg %>% filter(region == "Baltics")
+
+log_info(
+  "Region-split samples: Central Asia N={nrow(smp_ca)} ",
+  "({sum(smp_ca$any_esg)} disclosing), Baltics N={nrow(smp_balt)} ",
+  "({sum(smp_balt$any_esg)} disclosing, ",
+  "{sum(!is.na(smp_balt$soviet_era))} with non-missing soviet_era)."
+)
+
+mods_region <- list(
+  "(1)" = lm(any_esg ~ mandatory_esg + foreign_ownership, data = smp_ca),
+  "(2)" = lm(any_esg ~ mandatory_esg + foreign_ownership, data = smp_balt),
+  "(3)" = lm(any_esg ~ mandatory_esg + foreign_ownership + soviet_era,
+             data = smp_balt)
+)
+
+var_labels_region <- c(var_labels, "soviet_era" = "Soviet-Era Firm")
+
+# Region row sits right after the last coefficient/SE pair, before
+# Observations - 4 terms (Intercept, Mandatory ESG, Foreign Ownership,
+# Soviet-Era Firm) x 2 rows each = 8, so position 9. Confirm by eye once
+# rendered and adjust if off.
+region_row <- tibble(
+  term = "Region",
+  `(1)` = "Central Asia", `(2)` = "Baltics", `(3)` = "Baltics"
+)
+attr(region_row, "position") <- 9
+
+tab_reg_region <- modelsummary(
+  mods_region,
+  vcov = "HC1",
+  stars = c(`***` = 0.01, `**` = 0.05, `*` = 0.10),
+  estimate = "{estimate}{stars}",
+  statistic = "({std.error})",
+  coef_map = var_labels_region,
+  add_rows = region_row,
+  gof_map = list(
+    list(raw = "nobs", clean = "Observations", fmt = 0),
+    list(raw = "adj.r.squared", clean = "Adj. R\u00b2", fmt = function(x) sprintf("%.3f", x))
+  ),
+  output = "gt"
+)
+
+
+# --- Save -------------------------------------------------------------------------
+
+log_info("Done. Storing output in '{global_cfg$results_r}'")
+save(list = c(
+  "tab_sample_selection", "tab_disclosure_coverage", "tab_desc_panel_a",
+  "tab_desc_panel_b", "tab_corr", "tab_reg", "tab_reg_logit", "tab_reg_region"),
+  file = global_cfg$results_r)

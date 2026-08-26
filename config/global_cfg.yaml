@@ -12,13 +12,14 @@ log_file: stdout
 
 # External data paths
 sample_all_listed: data/external/sample_all_listed_firms.csv
+country_characteristics: data/external/country_characteristics.csv
 
 # File names for output objects that are used in multiple code steps
 base_sample: data/generated/base_sample.parquet
+logit_sample: data/generated/logit_sample.parquet
 
 # Result objects
 results_r: output/results.rda
 
 # Quarto documents
 paper_r: doc/paper_r.qmd
-

@@ -75,22 +75,53 @@ log_info(
 
 
 # --- soviet_era ---------------------------------------------------------------
+#
+# Three-source triangulation, combined with OR logic: a firm is coded
+# Soviet-era (1) if ANY source indicates it, since each has different blind
+# spots - manual founding-year lookups and Orbis incorporation dates are
+# both frequently overwritten by a firm's later re-registration date, and
+# the AI check was run only as a residual check on firms neither of the
+# first two sources had already flagged. Coded 0 only when every source
+# that returned a determination agrees on 0; NA only when no source
+# returned any determination at all.
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
-    year_founded_num = suppressWarnings(as.integer(year_founded)),
-    soviet_era = case_when(
+    year_founded_num = suppressWarnings(as.integer(year_founded_manual)),
+    year_incorporated_num = suppressWarnings(as.integer(year_incorporated_orbis)),
+    ai_checked_num = suppressWarnings(as.integer(soviet_era_ai_checked)),
+    ai_result_num = suppressWarnings(as.integer(soviet_era_ai_result)),
+    soviet_era_manual = case_when(
       is.na(year_founded_num) ~ NA_real_,
       year_founded_num < 1992 ~ 1,
       TRUE                    ~ 0
+    ),
+    soviet_era_orbis = case_when(
+      is.na(year_incorporated_num) ~ NA_real_,
+      year_incorporated_num < 1992 ~ 1,
+      TRUE                          ~ 0
+    ),
+    soviet_era_ai = if_else(
+      !is.na(ai_checked_num) & ai_checked_num == 1, ai_result_num, NA_real_
+    ),
+    soviet_era = case_when(
+      (!is.na(soviet_era_manual) & soviet_era_manual == 1) |
+        (!is.na(soviet_era_orbis) & soviet_era_orbis == 1) |
+        (!is.na(soviet_era_ai) & soviet_era_ai == 1)         ~ 1,
+      is.na(soviet_era_manual) & is.na(soviet_era_orbis) &
+        is.na(soviet_era_ai)                                  ~ NA_real_,
+      TRUE                                                    ~ 0
     )
   ) %>%
-  select(-year_founded_num)
+  select(
+    -year_founded_num, -year_incorporated_num, -ai_checked_num, -ai_result_num,
+    -soviet_era_manual, -soviet_era_orbis, -soviet_era_ai
+  )
 
 log_info(
   "soviet_era: {sum(sample_all_listed$soviet_era == 1, na.rm = TRUE)} Soviet-era, ",
   "{sum(sample_all_listed$soviet_era == 0, na.rm = TRUE)} post-Soviet, ",
-  "{sum(is.na(sample_all_listed$soviet_era))} NA (missing year_founded)."
+  "{sum(is.na(sample_all_listed$soviet_era))} NA (no source returned a determination)."
 )
 
 
@@ -422,7 +453,7 @@ sample_all_listed <- sample_all_listed %>%
     country, country_iso3, region, exchange, icb_industry, sensitive_industry,
     
     # Time
-    year, listed_since, year_founded, soviet_era,
+    year, listed_since, year_founded_manual, soviet_era,
     
     # Disclosure behaviour
     annual_report, annual_fin_report, interim_fin_reports,

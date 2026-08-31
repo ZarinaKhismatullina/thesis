@@ -264,6 +264,26 @@ log_info(
 )
 
 
+# --- mandatory_fin_state: state-level annual financial report mandate --------
+
+# All eight state jurisdictions in the raw sample mandate disclosure of an
+# annual financial report for ordinary listed equity issuers. Scope carve-outs 
+# target sovereign issuers and small debt-only issuances, neither of which 
+# applies to this study's non-financial equity sample, so the mandate is coded 1 
+# for every firm currently in scope.
+
+fin_state_mandate <- c(
+  KAZ = 1, UZB = 1, KGZ = 1, TJK = 1, TKM = 1, EST = 1, LVA = 1, LTU = 1
+)
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(mandatory_fin_state = fin_state_mandate[country_iso3])
+
+log_info(
+  "mandatory_fin_state: {sum(sample_all_listed$mandatory_fin_state == 1, na.rm = TRUE)} ",
+  "under a mandate, {sum(is.na(sample_all_listed$mandatory_fin_state))} NA."
+)
+
 # --- Country-level institutional/economic controls (WGI, GDP per capita) ------
 
 country_chars <- read_csv(
@@ -405,9 +425,9 @@ sample_all_listed <- sample_all_listed %>%
     foreign_ownership, foreign_ownership_threshold,
     individual_ownership, individual_ownership_threshold,
     
-    # ESG disclosure regulation (constructed)
+    # Disclosure regulation (constructed)
     mandatory_esg_state, mandatory_esg_exchange, mandatory_esg,
-    voluntary_esg_exchange,
+    voluntary_esg_exchange, mandatory_fin_state,
     
     # Country-level controls
     gdp_per_capita, ln_gdp_per_capita, wgi_rule_of_law

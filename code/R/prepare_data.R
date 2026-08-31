@@ -146,15 +146,28 @@ combine_flags <- function(a, b) {
 
 # --- mandatory_esg_state: country-level mandate --------------------------------
 
-esg_state_level <- c(KAZ = 0, UZB = 0, KGZ = 0, TKM = 0, TJK = 0)
+# KAZ: Minister of National Economy Order (effective 2018) mandates ESG
+# disclosure for state-controlled JSCs that are also exchange-listed -
+# applies only to state-owned sample firms, not universally like the other
+# Central Asian countries. UZB: two state-level ESG mandates exist
+# (Cabinet of Ministers Resolution; Ministry of Economy/Finance PIE
+# Decision), but both take effect in 2026/2027 - after this sample's FY2024
+# cutoff - so they don't apply yet and UZB stays 0. KGZ/TKM/TJK: no
+# applicable state-level ESG mandate identified.
+esg_state_level <- c(UZB = 0, KGZ = 0, TKM = 0, TJK = 0)
 
-# EU CSRD/NFRD-style mandate for EST/LVA/LTU applies above an employee threshold.
+# EU CSRD/NFRD-style mandate for EST/LVA/LTU applies above an employee
+# threshold. NFRD (2017) and CSRD (2024) target the same >500-employee PIE
+# population - CSRD just replaces NFRD as the legal instrument in 2024, so
+# this rule is unchanged despite the regulation update.
 baltic_employee_threshold <- 500
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
     employees_num = suppressWarnings(as.integer(number_of_employees)),
+    state_ownership_num = suppressWarnings(as.integer(state_ownership)),
     mandatory_esg_state = case_when(
+      country_iso3 == "KAZ" ~ state_ownership_num,
       country_iso3 %in% names(esg_state_level) ~ esg_state_level[country_iso3],
       country_iso3 %in% c("EST", "LVA", "LTU") & is.na(employees_num) ~ NA_real_,
       country_iso3 %in% c("EST", "LVA", "LTU") ~
@@ -162,22 +175,25 @@ sample_all_listed <- sample_all_listed %>%
       TRUE ~ NA_real_
     )
   ) %>%
-  select(-employees_num)
+  select(-employees_num, -state_ownership_num)
+
+log_info(
+  "mandatory_esg_state (Kazakhstan): {sum(sample_all_listed$mandatory_esg_state[sample_all_listed$country_iso3 == 'KAZ'] == 1, na.rm = TRUE)} ",
+  "of {sum(sample_all_listed$country_iso3 == 'KAZ')} firms under mandate (state-owned)."
+)
 
 
 # --- mandatory_esg_exchange: stock exchange listing-rule mandate ---------------
 
 # AIX: mandate applies only to ESG-Labelled/Green Bond issuers; none are in
-# this sample, so all AIX firms are coded 0. VLN: Nasdaq Vilnius Listing
-# Rules mandate ESG disclosure for regulated-market-listed companies (all
-# Nasdaq Vilnius firms in this sample are regulated-market).
+# this sample, so all AIX firms are coded 0. 
 esg_exchange_mandate <- c(
   AIX  = 0,  # no ESG/green bond issuers in sample
-  KSE  = 0,  # no exchange-level ESG mandate identified
+  KSE  = 0,  # mandate scoped to green/social/sustainability bond issuers only - sample is restricted to shares, so it never applies
   BTS  = 0,  # no exchange-level ESG mandate identified
   UZSE = 0,  # no exchange-level ESG mandate identified
   RIG  = 0,  # no exchange-level ESG mandate identified (Nasdaq Riga)
-  VLN  = 1,  # mandatory for regulated-market-listed companies
+  VLN  = 0,  # no exchange-level ESG mandate identified (Nasdaq Vilnius)
   TLN  = 0   # no exchange-level ESG mandate identified (Nasdaq Tallinn)
 )
 

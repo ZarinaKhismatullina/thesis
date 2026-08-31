@@ -156,6 +156,205 @@ tab_disclosure_coverage <- country_counts %>%
   gt(rowname_col = "step")
 
 
+# --- Mandate and compliance figures: ESG and financial reporting --------------
+
+# Two questions per disclosure type: (1) how is the sample composed across
+# mandate status x disclosure outcome (distribution), and (2) among mandated
+# firms specifically, how many comply (compliance). For FIN, mandatory_fin_
+# report is 1 for virtually the whole sample, so "compliance" and "overall
+# disclosure rate" collapse into the same number - only the distribution
+# chart is built for FIN, not a separate (redundant) compliance chart.
+
+country_order <- c("Kazakhstan", "Uzbekistan", "Kyrgyzstan", "Estonia", "Latvia", "Lithuania")
+
+category_levels <- c(
+  "Mandated & Disclosed", "Mandated & Not Disclosed",
+  "Not Mandated & Disclosed", "Not Mandated & Not Disclosed",
+  "Mandate Status Unresolved"
+)
+category_colors <- c(
+  "Mandated & Disclosed" = "#2A4D77", "Mandated & Not Disclosed" = "#9DB8D6",
+  "Not Mandated & Disclosed" = "#DD8452", "Not Mandated & Not Disclosed" = "#F3D1B8",
+  "Mandate Status Unresolved" = "grey80"
+)
+
+# By country: % of firms in each of the 5 mandate x disclosure categories.
+# The 5th category (grey) covers firms with an unresolved mandate status, so
+# every bar sums to 100% instead of leaving an unexplained gap.
+mandate_disclosure_breakdown <- function(data, mandate_var, disclosure_var) {
+  data %>%
+    mutate(
+      mandate = to01(.data[[mandate_var]]),
+      disclosed = to01(.data[[disclosure_var]])
+    ) %>%
+    group_by(country) %>%
+    summarise(
+      n = n(),
+      `Mandated & Disclosed` = sum(mandate == 1 & disclosed == 1, na.rm = TRUE),
+      `Mandated & Not Disclosed` = sum(mandate == 1 & disclosed == 0, na.rm = TRUE),
+      `Not Mandated & Disclosed` = sum(mandate == 0 & disclosed == 1, na.rm = TRUE),
+      `Not Mandated & Not Disclosed` = sum(mandate == 0 & disclosed == 0, na.rm = TRUE),
+      `Mandate Status Unresolved` = sum(is.na(mandate)),
+      .groups = "drop"
+    ) %>%
+    pivot_longer(-c(country, n), names_to = "category", values_to = "count") %>%
+    mutate(pct = 100 * count / n, category = factor(category, levels = category_levels)) %>%
+    arrange(country, category) %>%
+    group_by(country) %>%
+    mutate(ymax = cumsum(pct), ymin = ymax - pct, ymid = (ymin + ymax) / 2) %>%
+    ungroup() %>%
+    mutate(
+      country = factor(country, levels = country_order),
+      label_color = if_else(
+        category %in% c("Mandated & Disclosed", "Not Mandated & Disclosed"), "white", "black"
+      )
+    ) %>%
+    filter(!is.na(country))
+}
+
+plot_mandate_disclosure <- function(data) {
+  labs_df <- distinct(data, country, n)
+  country_labels <- setNames(paste0(labs_df$country, "\n(N=", labs_df$n, ")"), labs_df$country)
+  
+  ggplot(data, aes(x = country, y = pct, fill = category)) +
+    geom_col(position = position_stack(reverse = TRUE)) +
+    geom_text(
+      aes(y = ymid, label = if_else(pct >= 4, sprintf("%.0f%%", pct), ""), color = I(label_color)),
+      size = 2.8
+    ) +
+    scale_fill_manual(values = category_colors) +
+    scale_x_discrete(labels = country_labels) +
+    labs(x = NULL, y = "% of firms", fill = NULL) +
+    theme_minimal(base_size = 10) +
+    theme(legend.position = "bottom")
+}
+
+# Among mandated firms only: % disclosed vs. not, by country. Countries with
+# zero mandated firms show no bar and are labeled "No mandate" rather than a
+# misleading 0%.
+mandate_compliance <- function(data, mandate_var, disclosure_var) {
+  data %>%
+    mutate(
+      mandate = to01(.data[[mandate_var]]),
+      disclosed = to01(.data[[disclosure_var]])
+    ) %>%
+    group_by(country) %>%
+    summarise(
+      n_mandated = sum(mandate == 1, na.rm = TRUE),
+      Disclosed = sum(mandate == 1 & disclosed == 1, na.rm = TRUE),
+      `Not Disclosed` = sum(mandate == 1 & disclosed == 0, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    pivot_longer(c(Disclosed, `Not Disclosed`), names_to = "category", values_to = "count") %>%
+    mutate(
+      pct = if_else(n_mandated > 0, 100 * count / n_mandated, 0),
+      category = factor(category, levels = c("Disclosed", "Not Disclosed"))
+    ) %>%
+    arrange(country, category) %>%
+    group_by(country) %>%
+    mutate(ymax = cumsum(pct), ymin = ymax - pct, ymid = (ymin + ymax) / 2) %>%
+    ungroup() %>%
+    mutate(
+      country = factor(country, levels = country_order),
+      label_color = if_else(category == "Disclosed", "white", "black")
+    ) %>%
+    filter(!is.na(country))
+}
+
+plot_mandate_compliance <- function(data) {
+  labs_df <- distinct(data, country, n_mandated)
+  country_labels <- setNames(paste0(labs_df$country, "\n(N=", labs_df$n_mandated, ")"), labs_df$country)
+  
+  ggplot(data, aes(x = country, y = pct, fill = category)) +
+    geom_col(position = position_stack(reverse = TRUE)) +
+    geom_text(
+      aes(y = ymid, label = if_else(pct >= 4, sprintf("%.0f%%", pct), ""), color = I(label_color)),
+      size = 2.8
+    ) +
+    scale_fill_manual(values = c("Disclosed" = "#2A4D77", "Not Disclosed" = "#9DB8D6")) +
+    scale_x_discrete(labels = country_labels) +
+    labs(x = NULL, y = "% of mandated firms", fill = NULL) +
+    theme_minimal(base_size = 10) +
+    theme(legend.position = "bottom")
+}
+
+# --- ESG: distribution + compliance ---
+fig_esg_disclosure <- plot_mandate_disclosure(
+  mandate_disclosure_breakdown(smp, "mandatory_esg", "any_esg")
+)
+fig_esg_compliance <- plot_mandate_compliance(
+  mandate_compliance(smp, "mandatory_esg", "any_esg")
+)
+
+# --- FIN: distribution only (mandate is ~universal, so this already shows compliance) ---
+fig_fin_disclosure <- plot_mandate_disclosure(
+  mandate_disclosure_breakdown(smp, "mandatory_fin_state", "annual_fin_report")
+)
+
+
+# --- WGI institutional-quality comparison, all 6 dimensions -------------------
+
+# Country-level only (6 rows) - read directly from country_characteristics.csv
+# rather than through smp, since only wgi_rule_of_law is an actual regression
+# covariate (already merged into base_sample.parquet in prepare_data.R). The
+# other 5 dimensions appear only here, to show the Region/institutional-
+# quality link holds across the full WGI battery, not just the one dimension
+# used in the regressions.
+
+wgi_dim_labels <- c(
+  "Control of Corruption", "Government Effectiveness", "Political Stability",
+  "Regulatory Quality", "Rule of Law", "Voice and Accountability"
+)
+
+# Matched by ISO3 code, not country name - the source file spells Kyrgyzstan
+# as "Kyrgyz Republic", so a name-based filter silently drops it. Mapping
+# back through country_iso3_order also restores the display names used
+# everywhere else in this project.
+country_iso3_order <- c(
+  Kazakhstan = "KAZ", Uzbekistan = "UZB", Kyrgyzstan = "KGZ",
+  Estonia = "EST", Latvia = "LVA", Lithuania = "LTU"
+)
+
+# matches() rather than exact column names sidesteps a trailing-space
+# mismatch in the raw header ("Political Stability ... (+2.5) " has one) -
+# column order in the source file already matches wgi_dim_labels' order.
+wgi_long <- read_csv(global_cfg$country_characteristics, col_types = cols()) %>%
+  filter(`Country Code` %in% country_iso3_order) %>%
+  mutate(country = names(country_iso3_order)[match(`Country Code`, country_iso3_order)]) %>%
+  select(country, matches(paste(wgi_dim_labels, collapse = "|"))) %>%
+  rename_with(~ wgi_dim_labels, -country) %>%
+  pivot_longer(-country, names_to = "dimension", values_to = "score") %>%
+  mutate(
+    country = factor(country, levels = country_order),
+    dimension = factor(dimension, levels = wgi_dim_labels)
+  )
+
+# Per-country color (grouped by region hue) and shape (circle = Central Asia,
+# square = Baltics) - mapping both aesthetics to the same variable merges
+# them into one legend automatically.
+country_colors_wgi <- c(
+  "Kazakhstan" = "#8C2D19", "Uzbekistan" = "#D4703A", "Kyrgyzstan" = "#F0B27A",
+  "Estonia" = "#0B2E52", "Latvia" = "#3A6EA5", "Lithuania" = "#8FB3D9"
+)
+country_shapes_wgi <- c(
+  "Kazakhstan" = 16, "Uzbekistan" = 16, "Kyrgyzstan" = 16,
+  "Estonia" = 15, "Latvia" = 15, "Lithuania" = 15
+)
+
+# Symmetric x-axis around zero, sized to the actual data range, so visual
+# distance left/right of the dashed zero line is directly comparable.
+wgi_max_abs <- max(abs(wgi_long$score), na.rm = TRUE) * 1.1
+
+fig_wgi_dotstrip <- ggplot(wgi_long, aes(x = score, y = dimension, color = country, shape = country)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_point(size = 3) +
+  scale_color_manual(values = country_colors_wgi) +
+  scale_shape_manual(values = country_shapes_wgi) +
+  scale_x_continuous(limits = c(-wgi_max_abs, wgi_max_abs)) +
+  scale_y_discrete(limits = rev(wgi_dim_labels)) +
+  labs(x = "WGI score (-2.5 to +2.5)", y = NULL, color = NULL, shape = NULL) +
+  theme_minimal(base_size = 10)
+
 # --- Restrict to the common regression-ready sample -----------------------------
 
 # Descriptive statistics, correlations, and regressions all need to describe
@@ -559,6 +758,7 @@ tab_reg_region <- modelsummary(
 
 log_info("Done. Storing output in '{global_cfg$results_r}'")
 save(list = c(
-  "tab_sample_selection", "tab_disclosure_coverage", "tab_desc_panel_a",
+  "tab_sample_selection", "tab_disclosure_coverage", "fig_esg_disclosure",
+  "fig_esg_compliance", "fig_fin_disclosure", "fig_wgi_dotstrip", "tab_desc_panel_a",
   "tab_desc_panel_b", "tab_corr", "tab_reg", "tab_reg_logit", "tab_reg_region"),
   file = global_cfg$results_r)

@@ -39,8 +39,10 @@ total_exchange <- sample_selection %>%
   summarise(across(all_of(exchanges), sum)) %>%
   mutate(step = "Total number of observations per stock exchange", .before = 1)
 
-total_row <- function(label, group_var = NULL) {
-  long <- total_exchange %>%
+# total_tbl is passed explicitly (rather than closed over) so this can be
+# reused for both Panel A (disclosure sample) and Panel B (regression sample).
+total_row <- function(total_tbl, label, group_var = NULL) {
+  long <- total_tbl %>%
     select(-step) %>%
     pivot_longer(everything(), names_to = "exchange", values_to = "n") %>%
     mutate(exchange = factor(exchange, levels = exchanges)) %>%
@@ -60,13 +62,124 @@ total_row <- function(label, group_var = NULL) {
 sample_selection <- bind_rows(
   sample_selection,
   total_exchange,
-  total_row("Total number of observations per country", "country"),
-  total_row("Total number of observations per region", "region"),
-  total_row("Grand total (all regions)")
+  total_row(total_exchange, "Total number of observations per country", "country"),
+  total_row(total_exchange, "Total number of observations per region", "region"),
+  total_row(total_exchange, "Grand total (all regions) \u2013 disclosure sample")
 )
 
-tab_sample_selection <- sample_selection %>%
-  gt(rowname_col = "step") %>%
+
+# --- Read data ------------------------------------------------------------------
+# Moved up (was originally below the old Panel A block) so smp/smp_reg exist
+# before Panel B, which needs both to compute its exclusions live.
+
+log_info("Reading data...")
+smp <- read_parquet(global_cfg$base_sample)
+
+
+# --- Restrict to the common regression-ready sample ------------------------------
+# Moved up from its original position near the bottom of the script, for the
+# same reason. Nothing about its logic changes - descriptive figures/tables
+# below still use the full smp (141); only the regression and Panel B use
+# smp_reg (135).
+
+reg_vars <- c(
+  "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
+  "voluntary_esg_exchange", "foreign_ownership", "sensitive_industry",
+  "state_ownership", "ln_total_assets_eur_w", "roa_w",
+  "region", "wgi_rule_of_law", "ln_gdp_per_capita"
+)
+
+n_before <- nrow(smp)
+smp_reg <- smp %>%
+  drop_na(all_of(reg_vars)) %>%
+  mutate(region = factor(region, levels = c("Baltics", "Central Asia")))
+
+log_info(
+  "Regression-ready sample: {nrow(smp_reg)} of {n_before} firms have complete ",
+  "data across all {length(reg_vars)} model variables ",
+  "({n_before - nrow(smp_reg)} dropped)."
+)
+
+
+# --- Panel B: regression-sample attrition, computed live from smp/smp_reg -------
+#
+# Each reg_vars field is bucketed into a missingness category; categories are
+# applied sequentially so a firm missing fields in two categories is only
+# counted once, under whichever category is checked first (this mirrors how
+# Panel A's own waterfall avoids double-counting). Categories that turn out
+# to have zero drops are dropped from the table automatically, so this stays
+# accurate without hand-editing if the underlying data changes.
+
+missingness_categories <- list(
+  "Less: missing ownership data (state and/or foreign ownership)" =
+    c("state_ownership", "foreign_ownership"),
+  "Less: missing financial statement data (total assets/net income)" =
+    c("ln_total_assets_eur_w", "roa_w"),
+  "Less: missing ESG mandate/guidance classification" =
+    c("mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange", "voluntary_esg_exchange"),
+  "Less: missing country-level institutional data (WGI, GDP)" =
+    c("region", "wgi_rule_of_law", "ln_gdp_per_capita"),
+  "Less: missing base disclosure/classification data" =
+    c("any_esg", "sensitive_industry")
+)
+
+stopifnot(setequal(unlist(missingness_categories, use.names = FALSE), reg_vars))
+
+# Exchange-level counts for the exclusion rows only, via grepl (so a
+# dual-listed firm's exclusion is attributed to every exchange it's actually
+# on - the same convention Panel A's own "Less" rows use). The Disclosure
+# sample and Total rows below are NOT recomputed this way - see comment there.
+count_by_exchange <- function(data) {
+  exchanges %>%
+    set_names() %>%
+    map_int(~ sum(grepl(.x, data$exchange, fixed = TRUE), na.rm = TRUE)) %>%
+    as.list() %>%
+    as_tibble()
+}
+
+remaining <- smp
+exclusion_rows <- list()
+for (label in names(missingness_categories)) {
+  vars <- missingness_categories[[label]]
+  dropped <- remaining %>% filter(if_any(all_of(vars), is.na))
+  exclusion_rows[[label]] <- count_by_exchange(dropped) %>%
+    mutate(across(everything(), ~ -.x)) %>%
+    mutate(step = label, .before = 1)
+  remaining <- remaining %>% drop_na(all_of(vars))
+}
+stopifnot(setequal(remaining$isin, smp_reg$isin))
+
+exclusion_rows <- bind_rows(exclusion_rows) %>%
+  filter(rowSums(across(all_of(exchanges), ~ .x != 0)) > 0)
+
+# Disclosure sample row reuses Panel A's own resolved total_exchange.
+sample_selection_reg <- bind_rows(
+  total_exchange %>% mutate(step = "Disclosure sample"),
+  exclusion_rows
+)
+
+total_exchange_reg <- sample_selection_reg %>%
+  summarise(across(all_of(exchanges), sum)) %>%
+  mutate(step = "Total number of observations per stock exchange", .before = 1)
+
+sample_selection_reg <- bind_rows(
+  sample_selection_reg,
+  total_exchange_reg,
+  total_row(total_exchange_reg, "Total number of observations per country", "country"),
+  total_row(total_exchange_reg, "Total number of observations per region", "region"),
+  total_row(total_exchange_reg, "Grand total (all regions) \u2013 regression sample")
+)
+
+
+# --- Combine both panels into a single table -------------------------------------
+
+sample_selection_all <- bind_rows(
+  sample_selection %>% mutate(panel = "Panel A. Disclosure Sample", .before = 1),
+  sample_selection_reg %>% mutate(panel = "Panel B. Regression Sample", .before = 1)
+)
+
+tab_sample_selection <- sample_selection_all %>%
+  gt(rowname_col = "step", groupname_col = "panel") %>%
   # Zero -> "-", negative -> "(n)", NA -> blank - standard attrition-table
   # formatting; kept here since it's data formatting, not a note/title.
   fmt(
@@ -85,13 +198,8 @@ tab_sample_selection <- sample_selection %>%
   tab_spanner(label = "Latvia",       columns = c(RIG),       id = "lva") %>%
   tab_spanner(label = "Lithuania",    columns = c(VLN),       id = "ltu") %>%
   tab_spanner(label = "Central Asia",  spanners = c("kaz", "uzb", "kgz", "tkm", "tjk")) %>%
-  tab_spanner(label = "Baltic States", spanners = c("est", "lva", "ltu"))
-
-
-# --- Read data ----------------------------------------------------------------
-
-log_info("Reading data...")
-smp <- read_parquet(global_cfg$base_sample)
+  tab_spanner(label = "Baltic States", spanners = c("est", "lva", "ltu")) %>%
+  row_group_order(groups = c("Panel A. Disclosure Sample", "Panel B. Regression Sample"))
 
 
 # --- Disclosure coverage by region and country --------------------------------
@@ -427,29 +535,6 @@ tab_regulations_guidance <- regulations_guidance %>%
     level = "Level", effective_year = "Effective Year", scope = "Scope",
     disclosure_venue = "Disclosure Venue", n_affected = "N Affected"
   )
-
-# --- Restrict to the common regression-ready sample -----------------------------
-
-# Descriptive statistics, correlations, and regressions all need to describe
-# the same set of firms. Complete-case filter on the union of variables used
-# across the base equation and its alternate specifications.
-reg_vars <- c(
-  "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
-  "voluntary_esg_exchange", "foreign_ownership", "sensitive_industry",
-  "state_ownership", "ln_total_assets_eur_w", "roa_w",
-  "region", "wgi_rule_of_law", "ln_gdp_per_capita"
-)
-
-n_before <- nrow(smp)
-smp_reg <- smp %>%
-  drop_na(all_of(reg_vars)) %>%
-  mutate(region = factor(region, levels = c("Baltics", "Central Asia")))
-
-log_info(
-  "Regression-ready sample: {nrow(smp_reg)} of {n_before} firms have complete ",
-  "data across all {length(reg_vars)} model variables ",
-  "({n_before - nrow(smp_reg)} dropped)."
-)
 
 
 # --- Shared helpers ---------------------------------------------------------------

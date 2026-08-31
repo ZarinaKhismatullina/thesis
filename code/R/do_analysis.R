@@ -355,6 +355,79 @@ fig_wgi_dotstrip <- ggplot(wgi_long, aes(x = score, y = dimension, color = count
   labs(x = "WGI score (-2.5 to +2.5)", y = NULL, color = NULL, shape = NULL) +
   theme_minimal(base_size = 10)
 
+# --- Regulations table: mandatory rules and voluntary guidance ----------------
+
+# N Affected is computed directly from smp, not typed in - each row's count
+# is the sample firms actually eligible under that regulation's own scope.
+# Structural zeros (financial firms, bond-only rules, not-yet-effective
+# rules, and NFRD - superseded by CSRD as the FY2024 instrument) are
+# hardcoded with a comment, since there's no sample variable to compute them
+# from; everything else is a live count.
+
+regulations_mandatory <- tribble(
+  ~id,           ~country_region, ~issuer,                                             ~regulation,                                                                                                    ~level,     ~effective_year, ~scope,                                                     ~disclosure_venue,
+  "kaz_mne",     "Kazakhstan",    "Minister of National Economy",                       "MNE Order No. 21",                                                                                            "State",    2018,            "State-controlled, listed joint-stock companies",           "Annual Report or Standalone Report",
+  "kaz_fma_86",  "Kazakhstan",    "Financial Market Agency",                            "Resolution No. 86",                                                                                           "State",    2027,            "Commercial banks",                                         "Annual Report or Standalone Report",
+  "kaz_kase_m",  "Kazakhstan",    "KASE",                                               "Rules for Information Disclosure",                                                                            "Exchange", 2022,            "Admittance initiators on the \"Main\" market",             "Annual Report",
+  "kaz_aix_m",   "Kazakhstan",    "AIX",                                                "AIX Business Rules",                                                                                          "Exchange", 2019,            "ESG-Labelled Bond and Green Bond issuers",                 "Annual Report",
+  "uzb_com_221", "Uzbekistan",    "Cabinet of Ministers of the Republic",               "Resolution No. 221",                                                                                          "State",    2026,            "State-participated enterprises",                           "Annual Report or Standalone Report",
+  "uzb_mef_3736","Uzbekistan",    "Ministry of Economy and Finance and Central Bank",   "Decision No. 3736",                                                                                            "State",    2027,            "Public interest entities",                                 "Standalone Report",
+  "kgz_nbkr_gov","Kyrgyzstan",    "National Bank",                                      "Resolution No. 2024-P-12/71-4-(NPA)", "State", 2024,       "Commercial banks",                                         "Not Specified",
+  "kgz_kse_m",   "Kyrgyzstan",    "KSE",                                                "Listing Rules of KSE", "Exchange", 2014, "Issuers of green, social, and other sustainability bonds", "Annual Report or Standalone Report",
+  "balt_nfrd",   "Baltics",       "European Parliament & Council of the EU",            "NFRD \u2014 Directive 2014/95/EU",                                                                            "State",    2017,            "Public interest entities exceeding 500 employees",         "Management Report or Standalone Report",
+  "balt_csrd",   "Baltics",       "European Parliament & Council of the EU",            "CSRD \u2014 Directive (EU) 2022/2464",                                                                        "State",    2024,            "Public interest entities exceeding 500 employees",         "Management Report"
+)
+
+n_affected_mandatory <- c(
+  kaz_mne      = sum(smp$country == "Kazakhstan" & smp$mandatory_esg_state == 1, na.rm = TRUE),
+  kaz_fma_86   = 0,  # financial firms are outside the sample (see Table 1)
+  kaz_kase_m   = sum(smp$country == "Kazakhstan" & smp$mandatory_esg_exchange == 1, na.rm = TRUE),
+  kaz_aix_m    = 0,  # sample is restricted to shares; no Green/ESG-Labelled Bond issuers
+  uzb_com_221  = 0,  # effective 2026, after the FY2024 sample period
+  uzb_mef_3736 = 0,  # effective 2027, after the FY2024 sample period
+  kgz_nbkr_gov = 0,  # financial firms are outside the sample (see Table 1)
+  kgz_kse_m    = 0,  # sample is restricted to shares; no sustainability-bond issuers
+  balt_nfrd    = 0,  # superseded by CSRD as the binding instrument for FY2024
+  balt_csrd    = sum(smp$region == "Baltics" & smp$mandatory_esg_state == 1, na.rm = TRUE)
+)
+
+tab_regulations_mandatory <- regulations_mandatory %>%
+  mutate(n_affected = n_affected_mandatory[id]) %>%
+  select(-id) %>%
+  gt() %>%
+  cols_label(
+    country_region = "Country / Region", issuer = "Issuer", regulation = "Regulation",
+    level = "Level", effective_year = "Effective Year", scope = "Scope",
+    disclosure_venue = "Disclosure Venue", n_affected = "N Affected"
+  )
+
+regulations_guidance <- tribble(
+  ~id,           ~country_region, ~issuer,                     ~regulation,                          ~level,     ~effective_year, ~scope,                                          ~disclosure_venue,
+  "kaz_fma_291", "Kazakhstan",    "Financial Market Agency",    "ESG Disclosure Guidelines for Banks and Other Financial Institutions", "State", 2023, "Banks and other financial organizations",       "Annual Report or Standalone Report",
+  "kaz_kase_g",  "Kazakhstan",    "KASE",                       "Methodology for Preparing an Environmental, Social and Governance Report", "Exchange", 2018, "All listed companies and members of KASE", "Annual Report or Standalone Report",
+  "kaz_aix_g",   "Kazakhstan",    "AIX",                        "AIX Voluntary Sustainability Reporting Guidance", "Exchange", 2017,       "All reporting entities on AIX",                 "Annual Report or Standalone Report",
+  "kgz_nbkr_sus","Kyrgyzstan",    "National Bank",              "Sustainability Disclosure Guidelines", "State",  2025,                    "Commercial banks, non-bank financial-credit organizations", "Annual Report or Standalone Report",
+  "kgz_kse_g",   "Kyrgyzstan",    "KSE",                        "Guidance for Compiling and Publishing Reports on Sustainability, Social Responsibility and Corporate Governance Criteria", "Exchange", 2023, "Companies listed on KSE", "Annual Report or Standalone Report"
+)
+
+n_affected_guidance <- c(
+  kaz_fma_291  = 0,  # financial firms are outside the sample (see Table 1)
+  kaz_kase_g   = sum(grepl("KASE", smp$exchange, fixed = TRUE)),
+  kaz_aix_g    = sum(grepl("AIX", smp$exchange, fixed = TRUE)),
+  kgz_nbkr_sus = 0,  # financial firms are outside the sample (see Table 1)
+  kgz_kse_g    = sum(grepl("KSE", smp$exchange, fixed = TRUE))
+)
+
+tab_regulations_guidance <- regulations_guidance %>%
+  mutate(n_affected = n_affected_guidance[id]) %>%
+  select(-id) %>%
+  gt() %>%
+  cols_label(
+    country_region = "Country / Region", issuer = "Issuer", regulation = "Regulation",
+    level = "Level", effective_year = "Effective Year", scope = "Scope",
+    disclosure_venue = "Disclosure Venue", n_affected = "N Affected"
+  )
+
 # --- Restrict to the common regression-ready sample -----------------------------
 
 # Descriptive statistics, correlations, and regressions all need to describe
@@ -758,7 +831,8 @@ tab_reg_region <- modelsummary(
 
 log_info("Done. Storing output in '{global_cfg$results_r}'")
 save(list = c(
-  "tab_sample_selection", "tab_disclosure_coverage", "fig_esg_disclosure",
-  "fig_esg_compliance", "fig_fin_disclosure", "fig_wgi_dotstrip", "tab_desc_panel_a",
-  "tab_desc_panel_b", "tab_corr", "tab_reg", "tab_reg_logit", "tab_reg_region"),
+  "tab_sample_selection", "tab_disclosure_coverage", "tab_regulations_mandatory",
+  "tab_regulations_guidance", "fig_esg_disclosure", "fig_esg_compliance",
+  "fig_fin_disclosure", "fig_wgi_dotstrip", "tab_desc_panel_a", "tab_desc_panel_b",
+  "tab_corr", "tab_reg", "tab_reg_logit", "tab_reg_region"),
   file = global_cfg$results_r)

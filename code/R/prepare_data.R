@@ -310,6 +310,32 @@ log_info(
   "{sum(sample_all_listed$voluntary_esg_exchange == 0, na.rm = TRUE)} without."
 )
 
+# --- esg_mandate_in_force: country has an active ESG mandate for FY2024 -------
+#
+# Whether ANY binding ESG disclosure mandate - state or exchange-issued - is
+# already in force for FY2024 in a firm's country, for at least part of its
+# listed non-financial firm population, regardless of whether this specific
+# firm is bound by it. KAZ: MNE Order (2018) and KASE Main-market rule (2022)
+# are both already binding. EST/LVA/LTU: CSRD (2024) is binding EU-wide. UZB:
+# both state mandates take effect only in 2026/2027. KGZ/TJK/TKM: no ESG
+# mandate identified that reaches this study's non-financial equity sample.
+# Every firm with Mandatory ESG = 1 also has this flag = 1, since its own
+# mandate is one reason the country counts as active; the flag additionally
+# covers non-mandated firms sharing a country with a mandated one, which is
+# what the regulatory spillover analysis tests.
+esg_mandate_in_force_country <- c(
+  KAZ = 1, UZB = 0, KGZ = 0, TJK = 0, TKM = 0, EST = 1, LVA = 1, LTU = 1
+)
+
+sample_all_listed <- sample_all_listed %>%
+  mutate(esg_mandate_in_force = esg_mandate_in_force_country[country_iso3])
+
+log_info(
+  "esg_mandate_in_force: {sum(sample_all_listed$esg_mandate_in_force == 1, na.rm = TRUE)} firms ",
+  "in a country with an active ESG mandate, ",
+  "{sum(sample_all_listed$esg_mandate_in_force == 0, na.rm = TRUE)} not."
+)
+
 
 # --- mandatory_fin_state: state-level annual financial report mandate --------
 
@@ -474,7 +500,7 @@ sample_all_listed <- sample_all_listed %>%
     
     # Disclosure regulation (constructed)
     mandatory_esg_state, mandatory_esg_exchange, mandatory_esg,
-    voluntary_esg_exchange, mandatory_fin_state,
+    voluntary_esg_exchange, mandatory_fin_state, esg_mandate_in_force,
     
     # Country-level controls
     gdp_per_capita, ln_gdp_per_capita, wgi_rule_of_law

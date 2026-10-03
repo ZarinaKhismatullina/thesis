@@ -677,6 +677,72 @@ tab_desc_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label, co
   fmt_number(columns = c(Mean, SD, P5, Median, P95), decimals = 3) %>%
   cols_label(Diff = "Diff (Central Asia \u2212 Baltics)")
 
+# --- Country-level descriptive statistics (same variables as table 4) --------
+#
+# Same variable list, grouping, and structure as tab_desc_panel_a/b, with
+# country columns/rows in place of the Full Sample/Central Asia/Baltics
+# split, and no Diff column (a single pairwise test doesn't generalize to
+# six groups). Lets any region-level claim in section 5.1 - including ones
+# built on variables outside the regression itself, like Annual Report - be
+# checked against which country is actually driving it.
+
+country_order_composition <- c(
+  "Kazakhstan", "Kyrgyzstan", "Uzbekistan", "Estonia", "Latvia", "Lithuania"
+)
+
+# --- Panel A: binary variables, N/Mean per country (column pairs) ------------
+
+binary_row_country <- function(var, label) {
+  x <- smp_reg[[var]]
+  c <- smp_reg$country
+  out <- tibble(label = label)
+  for (ctry in country_order_composition) {
+    out[[paste0("N_", ctry)]] <- sum(!is.na(x[c == ctry]))
+    out[[paste0("Mean_", ctry)]] <- mean(x[c == ctry], na.rm = TRUE)
+  }
+  out
+}
+
+tab_country_panel_a <- map2_dfr(binary_vars$var_name, binary_vars$label, binary_row_country) %>%
+  left_join(binary_vars %>% select(label, group), by = "label") %>%
+  gt(groupname_col = "group", rowname_col = "label") %>%
+  fmt_number(columns = starts_with("Mean_"), decimals = 3) %>%
+  row_group_order(groups = group_order)
+
+# Column labels and per-country spanners, one pass per country for
+# readability - mirrors add_exchange_spanners' id/spanners nesting pattern.
+for (ctry in country_order_composition) {
+  tab_country_panel_a <- tab_country_panel_a %>%
+    cols_label(!!paste0("N_", ctry) := "N", !!paste0("Mean_", ctry) := "Mean") %>%
+    tab_spanner(
+      label = ctry,
+      columns = c(paste0("N_", ctry), paste0("Mean_", ctry)),
+      id = ctry
+    )
+}
+
+tab_country_panel_a <- tab_country_panel_a %>%
+  tab_spanner(label = "Central Asia", spanners = c("Kazakhstan", "Kyrgyzstan", "Uzbekistan")) %>%
+  tab_spanner(label = "Baltics", spanners = c("Estonia", "Latvia", "Lithuania"))
+
+# --- Panel B: continuous variables, countries as columns (trimmed) -----------
+
+continuous_row_country <- function(var, label) {
+  x <- smp_reg[[var]]
+  c <- smp_reg$country
+  mean_row <- tibble(row_label = paste(label, "- Mean"))
+  sd_row   <- tibble(row_label = paste(label, "- SD"))
+  for (ctry in country_order_composition) {
+    mean_row[[ctry]] <- mean(x[c == ctry], na.rm = TRUE)
+    sd_row[[ctry]]   <- sd(x[c == ctry], na.rm = TRUE)
+  }
+  bind_rows(mean_row, sd_row)
+}
+
+tab_country_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label, continuous_row_country) %>%
+  gt(rowname_col = "row_label") %>%
+  fmt_number(columns = all_of(country_order_composition), decimals = 3) %>%
+  tab_options(column_labels.hidden = TRUE)
 
 # --- Untabulated: characteristics of disclosers vs. non-disclosers -----------
 # Same comparison run on two groups: (1) firms with no personal ESG mandate
@@ -691,6 +757,7 @@ compare_disclosers <- function(data, label) {
     summarise(
       n                      = n(),
       mean_ln_total_assets   = mean(ln_total_assets_eur_w, na.rm = TRUE),
+      mean_roa               = mean(roa_w, na.rm = TRUE),
       pct_foreign_ownership  = mean(foreign_ownership, na.rm = TRUE),
       pct_state_ownership    = mean(state_ownership, na.rm = TRUE),
       pct_sensitive_industry = mean(sensitive_industry, na.rm = TRUE),
@@ -701,18 +768,50 @@ compare_disclosers <- function(data, label) {
   print(summary_tbl, width = Inf)
   
   print(t.test(ln_total_assets_eur_w ~ any_esg, data = data))
+  print(t.test(roa_w ~ any_esg, data = data))
   print(fisher.test(table(data$foreign_ownership, data$any_esg)))
   print(fisher.test(table(data$state_ownership, data$any_esg)))
   print(fisher.test(table(data$sensitive_industry, data$any_esg)))
   print(fisher.test(table(data$soviet_era, data$any_esg)))
 }
 
-smp_voluntary <- sample_all_listed %>% filter(mandatory_esg == 0)
+smp_voluntary <- smp_reg %>% filter(mandatory_esg == 0)
 compare_disclosers(smp_voluntary, "Voluntary disclosers vs. non-disclosers (no personal mandate):")
 
-smp_mandated <- sample_all_listed %>% filter(mandatory_esg == 1)
+# Country-by-country breakdown of the voluntary-discloser comparison above.
+smp_voluntary %>%
+  group_by(country, any_esg) %>%
+  summarise(
+    n                      = n(),
+    mean_ln_total_assets   = mean(ln_total_assets_eur_w, na.rm = TRUE),
+    mean_roa               = mean(roa_w, na.rm = TRUE),
+    pct_foreign_ownership  = mean(foreign_ownership, na.rm = TRUE),
+    pct_state_ownership    = mean(state_ownership, na.rm = TRUE),
+    pct_sensitive_industry = mean(sensitive_industry, na.rm = TRUE),
+    pct_soviet_era         = mean(soviet_era, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(country, any_esg) %>%
+  print(n = Inf, width = Inf)
+
+smp_mandated <- smp_reg %>% filter(mandatory_esg == 1)
 compare_disclosers(smp_mandated, "Compliant vs. non-compliant mandated firms:")
 
+# Same country-by-country breakdown, for the mandated-firms comparison.
+smp_mandated %>%
+  group_by(country, any_esg) %>%
+  summarise(
+    n                      = n(),
+    mean_ln_total_assets   = mean(ln_total_assets_eur_w, na.rm = TRUE),
+    mean_roa               = mean(roa_w, na.rm = TRUE),
+    pct_foreign_ownership  = mean(foreign_ownership, na.rm = TRUE),
+    pct_state_ownership    = mean(state_ownership, na.rm = TRUE),
+    pct_sensitive_industry = mean(sensitive_industry, na.rm = TRUE),
+    pct_soviet_era         = mean(soviet_era, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(country, any_esg) %>%
+  print(n = Inf, width = Inf)
 
 # --- Correlation table -------------------------------------------------------
 
@@ -1409,7 +1508,6 @@ log_info(
   "{round(coef(mods_spillover[['(2)']])['esg_mandate_in_force'], 3)})."
 )
 
-
 # --- Save -------------------------------------------------------------------------
 
 log_info("Done. Storing output in '{global_cfg$results_r}'")
@@ -1418,7 +1516,7 @@ save(list = c(
   "tab_sample_selection_a", "tab_sample_selection_b", "tab_disclosure_coverage",
   "tab_regulations_mandatory", "tab_regulations_guidance", "fig_esg_disclosure",
   "fig_esg_compliance", "fig_fin_disclosure", "fig_wgi_dotstrip", "tab_desc_panel_a",
-  "tab_desc_panel_b", "tab_corr", "tab_var_definitions", "tab_reg_main",
-  "tab_reg_robustness", "tab_reg_heterogeneity", "tab_reg_spillover"),
+  "tab_desc_panel_b", "tab_country_panel_a", "tab_country_panel_b", "tab_corr", "tab_var_definitions",
+  "tab_reg_main", "tab_reg_robustness", "tab_reg_heterogeneity", "tab_reg_spillover"),
   file = global_cfg$results_r)
 

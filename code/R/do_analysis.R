@@ -16,9 +16,9 @@ exchange_map <- tribble(
   "BTS",     "Kyrgyzstan",   "Central Asia",
   "AGB",     "Turkmenistan", "Central Asia",
   "CASE",    "Tajikistan",   "Central Asia",
-  "TLN",     "Estonia",      "Baltic States",
-  "RIG",     "Latvia",       "Baltic States",
-  "VLN",     "Lithuania",    "Baltic States"
+  "TLN",     "Estonia",      "Baltic states",
+  "RIG",     "Latvia",       "Baltic states",
+  "VLN",     "Lithuania",    "Baltic states"
 )
 exchanges <- exchange_map$exchange
 
@@ -64,7 +64,7 @@ sample_selection <- bind_rows(
   total_exchange,
   total_row(total_exchange, "Total number of observations per country", "country"),
   total_row(total_exchange, "Total number of observations per region", "region"),
-  total_row(total_exchange, "Grand total (all regions) \u2013 disclosure sample")
+  total_row(total_exchange, "Grand total (all regions) \u2014 disclosure sample")
 )
 
 
@@ -169,7 +169,7 @@ sample_selection_reg <- bind_rows(
   total_exchange_reg,
   total_row(total_exchange_reg, "Total number of observations per country", "country"),
   total_row(total_exchange_reg, "Total number of observations per region", "region"),
-  total_row(total_exchange_reg, "Grand total (all regions) \u2013 regression sample")
+  total_row(total_exchange_reg, "Grand total (all regions) \u2014 regression sample")
 )
 
 
@@ -191,7 +191,7 @@ add_exchange_spanners <- function(gt_tbl) {
     tab_spanner(label = "Latvia",       columns = c(RIG),       id = "lva") %>%
     tab_spanner(label = "Lithuania",    columns = c(VLN),       id = "ltu") %>%
     tab_spanner(label = "Central Asia",  spanners = c("kaz", "uzb", "kgz", "tkm", "tjk")) %>%
-    tab_spanner(label = "Baltic States", spanners = c("est", "lva", "ltu"))
+    tab_spanner(label = "Baltic states", spanners = c("est", "lva", "ltu"))
 }
 
 fmt_attrition <- function(gt_tbl) {
@@ -207,7 +207,7 @@ fmt_attrition <- function(gt_tbl) {
 
 sample_selection <- bind_rows(
   sample_selection,
-  total_row(total_exchange_reg, "Grand total (all regions) \u2013 regression sample")
+  total_row(total_exchange_reg, "Grand total (all regions) \u2014 regression sample")
 )
 
 tab_sample_selection_a <- sample_selection %>%
@@ -228,11 +228,11 @@ disclosure_counts <- function(data) {
   data %>%
     summarise(
       N = n(),
-      `Annual Report` = sum(to01(annual_report) == 1, na.rm = TRUE),
+      `Integrated Annual Report` = sum(to01(annual_report) == 1, na.rm = TRUE),
       `ESG Disclosure` = sum(to01(any_esg) == 1, na.rm = TRUE),
       `(a) ESG Standalone Report` = sum(to01(ESG_separate_report) == 1, na.rm = TRUE),
-      `(b) ESG in Annual Report` = sum(to01(ESG_info_annual_report) == 1, na.rm = TRUE),
-      `(c) ESG in Both (Standalone and Annual Report)` = sum(
+      `(b) ESG in Integrated Annual Report` = sum(to01(ESG_info_annual_report) == 1, na.rm = TRUE),
+      `(c) ESG in Both (Standalone and Integrated Annual Report)` = sum(
         to01(ESG_separate_report) == 1 & to01(ESG_info_annual_report) == 1,
         na.rm = TRUE
       ),
@@ -253,7 +253,7 @@ region_counts <- smp %>%
   group_modify(~ disclosure_counts(.x)) %>%
   ungroup() %>%
   mutate(
-    region = if_else(region == "Central Asia", "Central Asia (Total)", "Baltic States (Total)")
+    region = if_else(region == "Central Asia", "Central Asia (Total)", "Baltic states (Total)")
   ) %>%
   pivot_wider(names_from = region, values_from = n)
 
@@ -263,9 +263,9 @@ all_counts <- disclosure_counts(smp) %>%
 
 # Fixed row order, independent of how the joins below happen to sort things.
 step_order <- c(
-  "N", "Annual Report", "ESG Disclosure",
-  "(a) ESG Standalone Report", "(b) ESG in Annual Report",
-  "(c) ESG in Both (Standalone and Annual Report)", "Annual Financial Disclosure"
+  "N", "Integrated Annual Report", "ESG Disclosure",
+  "(a) ESG Standalone Report", "(b) ESG in Integrated Annual Report",
+  "(c) ESG in Both (Standalone and Integrated Annual Report)", "Annual Financial Disclosure"
   # "Interim Financial Disclosure"
 )
 
@@ -274,7 +274,7 @@ tab_disclosure_coverage <- country_counts %>%
   left_join(all_counts, by = "step") %>%
   select(
     step, Kazakhstan, Uzbekistan, Kyrgyzstan, `Central Asia (Total)`,
-    Estonia, Latvia, Lithuania, `Baltic States (Total)`, `All Countries (Total)`
+    Estonia, Latvia, Lithuania, `Baltic states (Total)`, `All Countries (Total)`
   ) %>%
   mutate(step = factor(step, levels = step_order)) %>%
   arrange(step) %>%
@@ -519,12 +519,12 @@ regulations_mandatory <- tribble(
 
 n_affected_mandatory <- c(
   kaz_mne      = sum(smp$country == "Kazakhstan" & smp$mandatory_esg_state == 1, na.rm = TRUE),
-  kaz_fma_86   = 0,  # financial firms are outside the sample (see Table 1)
+  kaz_fma_86   = 0,  # financial firms are outside the sample
   kaz_kase_m   = sum(smp$country == "Kazakhstan" & smp$mandatory_esg_exchange == 1, na.rm = TRUE),
   kaz_aix_m    = 0,  # sample is restricted to shares; no Green/ESG-Labelled Bond issuers
   uzb_com_221  = 0,  # effective 2026, after the FY2024 sample period
   uzb_mef_3736 = 0,  # effective 2027, after the FY2024 sample period
-  kgz_nbkr_gov = 0,  # financial firms are outside the sample (see Table 1)
+  kgz_nbkr_gov = 0,  # financial firms are outside the sample
   kgz_kse_m    = 0,  # sample is restricted to shares; no sustainability-bond issuers
   balt_nfrd    = 0,  # superseded by CSRD as the binding instrument for FY2024
   balt_csrd    = sum(smp$region == "Baltics" & smp$mandatory_esg_state == 1, na.rm = TRUE)
@@ -550,10 +550,10 @@ regulations_guidance <- tribble(
 )
 
 n_affected_guidance <- c(
-  kaz_fma_291  = 0,  # financial firms are outside the sample (see Table 1)
+  kaz_fma_291  = 0,  # financial firms are outside the sample
   kaz_kase_g   = sum(grepl("KASE", smp$exchange, fixed = TRUE)),
   kaz_aix_g    = sum(grepl("AIX", smp$exchange, fixed = TRUE)),
-  kgz_nbkr_sus = 0,  # financial firms are outside the sample (see Table 1)
+  kgz_nbkr_sus = 0,  # financial firms are outside the sample
   kgz_kse_g    = sum(grepl("KSE", smp$exchange, fixed = TRUE))
 )
 
@@ -609,7 +609,7 @@ binary_vars <- tibble(
     "foreign_ownership", "state_ownership", "soviet_era", "sensitive_industry"
   ),
   label = c(
-    "Annual Report", "ESG Disclosure", "  ESG Standalone Report", "  ESG in Annual Report",
+    "Integrated Annual Report", "ESG Disclosure", "  ESG Standalone Report", "  ESG in Integrated Annual Report",
     "Annual Financial Disclosure",
     "Mandatory ESG", "Mandatory ESG (State)", "Mandatory ESG (Exchange)",
     "ESG Guidance (Exchange)",
@@ -663,11 +663,11 @@ continuous_block <- function(var, label) {
   r <- smp_reg$region
   bind_rows(
     group_stats(x) %>%
-      mutate(row_label = paste(label, "\u2013 Full Sample"), Diff = mean_diff(x, r)),
+      mutate(row_label = paste(label, "\u2014 Full Sample"), Diff = mean_diff(x, r)),
     group_stats(x[r == "Central Asia"]) %>%
-      mutate(row_label = paste(label, "\u2013 Central Asia"), Diff = ""),
+      mutate(row_label = paste(label, "\u2014 Central Asia"), Diff = ""),
     group_stats(x[r == "Baltics"]) %>%
-      mutate(row_label = paste(label, "\u2013 Baltics"), Diff = "")
+      mutate(row_label = paste(label, "\u2014 Baltics"), Diff = "")
   )
 }
 
@@ -683,7 +683,7 @@ tab_desc_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label, co
 # country columns/rows in place of the Full Sample/Central Asia/Baltics
 # split, and no Diff column (a single pairwise test doesn't generalize to
 # six groups). Lets any region-level claim in section 5.1 - including ones
-# built on variables outside the regression itself, like Annual Report - be
+# built on variables outside the regression itself, like Integrated Annual Report - be
 # checked against which country is actually driving it.
 
 country_order_composition <- c(
@@ -730,8 +730,8 @@ tab_country_panel_a <- tab_country_panel_a %>%
 continuous_row_country <- function(var, label) {
   x <- smp_reg[[var]]
   c <- smp_reg$country
-  mean_row <- tibble(row_label = paste(label, "- Mean"))
-  sd_row   <- tibble(row_label = paste(label, "- SD"))
+  mean_row <- tibble(row_label = paste(label, "\u2014 Mean"))
+  sd_row   <- tibble(row_label = paste(label, "\u2014 SD"))
   for (ctry in country_order_composition) {
     mean_row[[ctry]] <- mean(x[c == ctry], na.rm = TRUE)
     sd_row[[ctry]]   <- sd(x[c == ctry], na.rm = TRUE)
@@ -892,20 +892,20 @@ var_definitions_order <- c(
 var_definitions <- tribble(
   ~variable, ~definition, ~source, ~group,
   
-  "Annual Report",
-  "Indicator equal to one if a firm discloses an (integrated) annual report, and zero otherwise.",
+  "Integrated Annual Report",
+  "Indicator equal to one if a firm discloses an integrated annual report, and zero otherwise.",
   "Hand-collected", "Disclosure variables",
   
   "ESG Disclosure",
-  "Indicator equal to one if a firm discloses ESG information either within its annual report or in a standalone/separate ESG report, and zero otherwise. Constructed as the union of ESG information disclosed within the annual report and a standalone ESG report.",
+  "Indicator equal to one if a firm discloses ESG information either within its integrated annual report or in a standalone ESG report, and zero otherwise. Constructed as the union of ESG information disclosed within the integrated annual report and a standalone ESG report.",
   "Hand-collected", "Disclosure variables",
   
   "ESG Standalone Report",
   "Indicator equal to one if a firm publishes a standalone ESG or sustainability report, and zero otherwise.",
   "Hand-collected", "Disclosure variables",
   
-  "ESG in Annual Report",
-  "Indicator equal to one if a firm's annual report contains ESG-related information, and zero otherwise.",
+  "ESG in Integrated Annual Report",
+  "Indicator equal to one if a firm's integrated annual report contains ESG-related information, and zero otherwise.",
   "Hand-collected", "Disclosure variables",
   
   "Annual Financial Disclosure",
@@ -961,7 +961,7 @@ var_definitions <- tribble(
   "Hand-collected annual reports", "Firm characteristics",
   
   "Region",
-  "Factor identifying whether a firm's home country is in the Baltic States (Estonia, Latvia, Lithuania) or Central Asia (Kazakhstan, Uzbekistan, Kyrgyzstan, Tajikistan, Turkmenistan)",
+  "Factor identifying whether a firm's home country is in the Baltic states (Estonia, Latvia, Lithuania) or Central Asia (Kazakhstan, Uzbekistan, Kyrgyzstan, Tajikistan, Turkmenistan)",
   "Author's classification", "Country-level variables",
   
   "Rule of Law",
@@ -1135,8 +1135,19 @@ t_stat_4 <- diff_4 / se_diff_4
 wald_4_p <- 2 * pt(-abs(t_stat_4), df = df.residual(mods_fe[["(4)"]]))
 log_info("Wald test, Model (4) State = Foreign Ownership: p = {round(wald_4_p, 3)}")
 
+# --- Untabulated: state ownership and disclosure, by country -----------------
+# Checks the mechanism behind State Ownership's negative pooled Table 7
+# coefficient: whether it reflects a consistent within-country relationship,
+# or is driven by one country's composition (see Section 5.2).
+
+smp_reg %>%
+  group_by(country, state_ownership) %>%
+  summarise(n = n(), pct_esg_disclosure = mean(any_esg, na.rm = TRUE), .groups = "drop") %>%
+  arrange(country, state_ownership) %>%
+  print(n = Inf, width = Inf)
+
 # --- Untabulated: winsorization robustness (1st/99th vs. 5th/95th) -----------
-# Re-estimates every Table 6 column that includes ln(Total Assets) or ROA
+# Re-estimates every Table 7 column that includes ln(Total Assets) or ROA
 # (FE: 2-4; pooled: 6-9) after winsorizing both at the 1st/99th percentile
 # instead of the 5th/95th used throughout. Columns (1) and (5) are excluded
 # since neither variable enters those specifications.
@@ -1189,7 +1200,7 @@ for (m in names(mods_w2)) {
 
 # --- Untabulated: Mandatory ESG disaggregated into state vs. exchange -------
 # mandatory_esg_state and mandatory_esg_exchange combine via OR into
-# mandatory_esg in Table 6; here they enter as separate regressors to see
+# mandatory_esg in Table 7; here they enter as separate regressors to see
 # whether the result is driven by one instrument, both, or neither.
 
 mod_disagg_fe4 <- feols(
@@ -1419,7 +1430,7 @@ tab_reg_heterogeneity <- modelsummary(
 
 # --- Additional analysis: regulatory spillover effects ------------------------
 #
-# Motivated by a pattern in the descriptive results (Figure 1): disclosure
+# Motivated by a pattern in the descriptive results (Figure 2): disclosure
 # among non-mandated firms appears higher in countries where a mandate is
 # already in force for other firms. This tests that pattern directly. 
 # Sample restricted to non-mandated firms only.

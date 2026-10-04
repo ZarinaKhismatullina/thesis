@@ -2,6 +2,7 @@ project_name: thesis
 
 # Output file names
 output_paper: output/thesis_paper.pdf
+output_tables_figures: output/tables-and-figures.pdf
 
 # Possible values: debug, info, warn, error, fatal, off
 # The repo code only uses info and error levels so info is a good default
@@ -16,10 +17,10 @@ country_characteristics: data/external/country_characteristics.csv
 
 # File names for output objects that are used in multiple code steps
 base_sample: data/generated/base_sample.parquet
-logit_sample: data/generated/logit_sample.parquet
 
 # Result objects
 results_r: output/results.rda
 
 # Quarto documents
-paper_r: doc/paper_r.qmd
+paper_r: doc/paper.qmd
+tables_figures_r: doc/tables-and-figures.qmd

@@ -17,6 +17,7 @@ RUN install2.r --error --skipinstalled \
       tidyverse rmarkdown modelsummary gt languageserver \
       fixest glue logger dotenv ggbeeswarm devtools \
       colorspace hms duckdb yaml arrow \
+      car sandwich logistf modelr broom \
   && Rscript -e "install.packages('vscDebugger', repos='https://manuelhentschel.r-universe.dev')" \
   && rm -rf /tmp/downloaded_packages
 

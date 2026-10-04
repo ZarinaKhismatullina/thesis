@@ -61,3 +61,4 @@ $(PAPER): $(PAPER_QMD) doc/references.bib $(RESULTS) $(TABLES_FIGURES)
 	quarto render $(PAPER_QMD) --quiet
 	mv output/paper.pdf $(PAPER)
 	rm -f doc/paper.ttt doc/paper.fff
+	rm -f $(TABLES_FIGURES)

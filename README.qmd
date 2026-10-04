@@ -28,7 +28,7 @@ The repository's workflow infrastructure is adapted from the [`trr266/treat`](ht
 
 ## How do I run the workflow and create the output?
 
-To run this workflow, you need R and Quarto installed, and the `make` and `yq` command-line tools available in your terminal.
+To run this workflow, you need R and Quarto installed, and the make and yq command-line tools available in your terminal.
 
 From the repository root, run:
 

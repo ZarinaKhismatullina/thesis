@@ -1,5 +1,9 @@
 ---
 title: "Tables and Figures"
+bibliography: references.bib
+biblio-style: apsr
+nocite: |
+  @*
 format:
   pdf:
     documentclass: article
@@ -24,7 +28,6 @@ library(tidyverse)
 library(gt)
 load("../output/results.rda")
 
-# Same LaTeX conversion this project's paper_r.qmd already uses.
 convert_to_latex <- function(gt_table) {
   gt_table %>%
     as_latex() %>%
@@ -34,10 +37,6 @@ convert_to_latex <- function(gt_table) {
     str_replace(fixed("{\\linewidth}{@{\\extracolsep{\\fill}}"), "{")
 }
 
-# Same idea, but into longtable instead of tabular - this is the one table
-# (Table 9) that is too tall for one page and needs to paginate rather than
-# shrink. \endhead is inserted after the first \midrule so the header row
-# repeats on every continuation page.
 convert_to_longtable <- function(gt_table) {
   lines <- gt_table %>%
     as_latex() %>%
@@ -50,14 +49,6 @@ convert_to_longtable <- function(gt_table) {
   append(lines, "\\endhead", after = first_midrule)
 }
 
-# Forces one or more columns of a tabular to wrap text instead of running
-# the table wide as one unbroken line - the same problem that made Table 9
-# unreadable before cols_width() was applied to it at the gt level. Doing
-# it here instead, on the LaTeX column spec directly, means it works on
-# any table without needing to touch the gt object in do_analysis.R.
-# widths is a named vector/list where the name is the column's position
-# counting left to right as a reader sees it (1 = first column), e.g.
-# c(`1` = "2.6in") turns column 1 into a 2.6-inch wrapping column.
 wrap_cols <- function(lines, widths) {
   idx <- which(str_detect(lines, fixed("\\begin{tabular}{")))[1]
   full_spec <- str_match(lines[idx], "^\\\\begin\\{tabular\\}\\{(.*)\\}$")[1, 2]
@@ -71,32 +62,8 @@ wrap_cols <- function(lines, widths) {
   lines
 }
 
-# One fixed font size applied to every table before it is scaled. Portrait
-# tables are all wide/dense enough that they need shrinking to fit anyway,
-# so this ends up being close to their common final size. A very wide
-# rotated table (many numeric columns, like the correlation matrix) will
-# still end up with a smaller font than a narrower one even after
-# wrapping long text columns - that part is unavoidable once a table
-# genuinely has that many columns.
 shrink <- function(gt_tbl) tab_options(gt_tbl, table.font.size = px(9))
 
-# Builds one self-contained table block: bold title, an optional plain-text
-# subtitle line right below it (used for "Panel A: ..." on tables 1, 3, and
-# 4, which need both a full table title AND a panel label on the same
-# page), the table itself (scaled with adjustbox), and an optional Notes
-# paragraph. subtitle and notes are two SEPARATE parameters - passing a
-# panel label as a second unnamed argument used to silently land in notes
-# instead (R matches unnamed arguments to the next unfilled parameter in
-# the function's signature), which is why "Panel A: ..." was showing up
-# prefixed with "Notes:" in the rendered PDF. Pass notes = NULL (the
-# default) to omit the notes block entirely - used for the first panel of
-# a table whose notes are written once, after the last panel.
-# stretch = FALSE (portrait tables) uses adjustbox "max width", which only
-# ever shrinks a table that would otherwise overflow. stretch = TRUE
-# (rotated tables) uses plain "width", which always scales to exactly
-# fill width_cmd, so a narrow table still fills the rotated page. Pass
-# wrap = c(`<position>` = "<width>", ...) to wrap specific columns (see
-# wrap_cols() above) before the table is scaled.
 table_block <- function(gt_tbl, title, subtitle = NULL, notes = NULL,
                          width_cmd = "\\textwidth", stretch = FALSE,
                          center = FALSE, wrap = NULL) {
@@ -138,11 +105,6 @@ table_block <- function(gt_tbl, title, subtitle = NULL, notes = NULL,
   )
 }
 
-# Same as table_block, but for the one longtable (Table 9): no adjustbox
-# (longtable already paginates instead of needing to be scaled to fit),
-# and no threeparttable (it isn't compatible with a table that spans
-# multiple pages). Pass notes = NULL (the default) to omit the notes
-# paragraph entirely.
 longtable_block <- function(gt_tbl, title, notes = NULL) {
   notes_lines <- if (is.null(notes)) {
     character(0)
@@ -158,14 +120,10 @@ longtable_block <- function(gt_tbl, title, notes = NULL) {
   )
 }
 
-# Rotates a block of LaTeX lines to landscape. pdflscape both rotates the
-# content and flags the PDF page as landscape. Its \begin{landscape} and
-# \end{landscape} each force their own page break, so the title has to be
-# INSIDE this block (table_block already puts it there) - a separate
-# Quarto heading rendered before this chunk would otherwise be stranded on
-# the previous, still-portrait page.
 landscape_wrap <- function(lines) c("\\begin{landscape}", lines, "\\end{landscape}")
 ```
+
+{{< pagebreak >}}
 
 ```{r}
 #| fig-width: 6
@@ -174,7 +132,7 @@ landscape_wrap <- function(lines) c("\\begin{landscape}", lines, "\\end{landscap
 fig_wgi_dotstrip
 ```
 
-Fig. 1.—Institutional Quality (Worldwide Governance Indicators), by Country. This figure plots each sample country's estimate, as of 2024, on all six World Bank Worldwide Governance Indicators. Higher values indicate stronger institutional quality; estimates range from approximately -2.5 (weak) to 2.5 (strong). Countries are grouped by region (Central Asia vs. Baltic States). Variable definitions are provided in Appendix A.
+Fig. 1.—Institutional Quality (Worldwide Governance Indicators), by Country. This figure plots each sample country's estimate, as of 2024, on six World Bank Worldwide Governance Indicators. Higher values indicate stronger institutional quality; estimates range from approximately -2.5 (weak) to 2.5 (strong). Countries are grouped by region (Central Asia vs. Baltic states). All variables are defined in Appendix A.
 
 {{< pagebreak >}}
 
@@ -196,18 +154,17 @@ cat(paste(landscape_wrap(table_block(
 
 cat(paste(landscape_wrap(table_block(
   shrink(tab_regulations_guidance),
-  title = "Panel B: Voluntary ESG Disclosure Guidance",
+  title = "Table 1: ESG Disclosure Regulations by Country --- continued",
+  subtitle = "Panel B: Voluntary ESG Disclosure Guidance",
   notes = paste(
-    "Panel A lists the mandatory ESG disclosure regulations in force in",
+   "Panel A lists the mandatory ESG disclosure regulations in force in",
     "each sample country as of the data collection period (June 2026);",
     "Panel B lists non-binding ESG disclosure guidance issued in the",
-    "same countries and period. Both panels report the issuing",
-    "authority, the year of introduction, the scope of application, and",
-    "the disclosure venue required or recommended. N Affected reports",
+    "same countries and period. N Affected is computed over the full",
+    "disclosure sample (N = 141; Table 2, Panel A) and reports",
     "the number of sample firms subject to each individual regulation (Panel A) or",
     "eligible to follow the guidance (Panel B). A firm may be subject to more than one regulation. Data are hand collected",
-    "from government institutions, securities regulators, stock exchange",
-    "listing rules, and exchange guidance documents."
+    "from national regulatory texts and exchange rules."
   ),
   stretch = TRUE,
   width_cmd = "\\rotwidth",
@@ -233,31 +190,24 @@ cat(paste(landscape_wrap(table_block(
 
 cat(paste(landscape_wrap(table_block(
   shrink(tab_sample_selection_b),
-  title = "Panel B: Final Regression Sample",
-  notes = paste(
+  title = "Table 2: Sample Selection and Composition --- continued",
+  subtitle = "Panel B: Final Regression Sample",
+    notes = paste(
     "Panel A reports the sample selection procedure for all publicly",
     "listed, non-financial firms across the ten stock exchanges covered",
-    "by the study, from the full listed population down to the disclosure",
-    "sample, by country and region. The starting point is the full",
-    "population of firms listed on each exchange as of June 2026, the",
-    "date of data collection, since these exchanges do not report",
-    "historical listing counts. Panel A's disclosure sample is the sample",
+    "by the study, by country and region. The starting point is the full",
+    "population of firms listed on each exchange collected in June 2026.", 
+    "Panel A's disclosure sample is the sample",
     "used for the disclosure-coverage statistics reported in Table 3 and",
-    "figure 2. Panel B continues the selection from the disclosure sample",
-    "down to the final regression sample. Each row reports the number of",
-    "firms excluded for the stated reason, in parentheses, and the",
-    "remaining sample size after that exclusion. Exchange abbreviations",
+    "Figure 2. Panel B continues the selection from the disclosure sample",
+    "down to the final regression sample. Exchange abbreviations",
     "are: KASE, Kazakhstan Stock Exchange; AIX, Astana International",
-    "Exchange; UZSE, Republican Stock Exchange of Uzbekistan; KSE, Kyrgyz",
+    "Exchange; UZSE, Republican Stock Exchange Toshkent; KSE, Kyrgyz",
     "Stock Exchange; BTS, Stock Exchange of Kyrgyzstan; AGB, Ashgabat",
     "Stock Exchange; CASE, Central Asian Stock Exchange; TLN, Nasdaq",
-    "Tallinn; RIG, Nasdaq Riga; VLN, Nasdaq Vilnius. Firms are excluded",
-    "from the regression sample in Panel B if ownership, financial, or",
-    "other control variables required for the regression analysis could",
-    "not be hand collected. A dash indicates no exclusions were required",
-    "for that reason in that market. The Grand Total row in Panel B is",
+    "Tallinn; RIG, Nasdaq Riga; VLN, Nasdaq Vilnius. The Grand Total row in Panel B is",
     "the final sample used in the descriptive statistics, correlation,",
-    "and regression analyses reported in Table 4, and Tables 6 through 9."
+    "and regression analyses reported in Tables 4 through 9."
   ),
   stretch = TRUE,
   width_cmd = "\\rotwidth",
@@ -270,25 +220,17 @@ cat(paste(landscape_wrap(table_block(
 ```{r}
 #| results: asis
 
-cat(paste(longtable_block(
-  shrink(tab_var_definitions),
-  title = "Appendix A: Variable Definitions"
-), collapse = "\n"))
-```
-
-{{< pagebreak >}}
-
-```{r}
-#| results: asis
-
 cat(paste(landscape_wrap(table_block(
   shrink(tab_disclosure_coverage),
   title = "Table 3: Disclosure Coverage by Region and Country",
   notes = paste(
     "This table reports, by country, the number of sample firms",
-    "publishing each report type, drawn from the full listed population",
-    "in Table 2, Panel A (full sample, N = 141). All variables are",
-    "defined in Appendix A."
+    "publishing each report type, drawn from the full disclosure sample (N = 141; Table 2, Panel A). ESG Disclosure is the",
+    "union, not the sum, of (a) and (b): a firm with both an ESG",
+    "standalone report and ESG information in its integrated annual",
+    "report is counted once under ESG Disclosure but appears in both",
+    "(a) and (b). Row (c) reports the number of such firms, by country",
+    "and in total. All variables are defined in Appendix A."
   ),
   stretch = TRUE,
   width_cmd = "\\rotwidth",
@@ -312,20 +254,20 @@ cat(paste(table_block(
 cat(paste(table_block(
   shrink(tab_desc_panel_b),
   title = "Panel B: Continuous Variables",
-  notes = paste(
+    notes = paste(
     "Panel A reports the mean (share equal to one) and number of",
     "observations for all binary variables used in the regression",
     "analysis; Panel B reports summary statistics for all continuous",
     "variables. Both panels are calculated over the final regression",
-    "sample (Table 2, Panel B). All continuous firm-level variables are",
+    "sample (N = 135; Table 2, Panel B). All continuous firm-level variables are",
     "winsorized at the 5th and 95th percentiles. The Diff (Central Asia",
-    "- Baltics) column reports the difference in means between the two",
+    "$-$ Baltics) column reports the difference in means between the two",
     "regions and its statistical significance, based on a",
     "two-proportion z-test (Panel A) or a two-sample t-test (Panel B). A",
     "dash indicates the variable has no variation within at least one",
-    "region, so no test statistic could be computed. *, **, and ***",
-    "denote statistical significance at the 10\\%, 5\\%, and 1\\% levels,",
-    "respectively. All variables are defined in Appendix A."
+    "region, so no test statistic could be computed. All variables are",
+    "defined in Appendix A. *, **, and *** denote statistical significance",
+    "at the 10\\%, 5\\%, and 1\\% levels, respectively."
   )
 ), collapse = "\n"))
 ```
@@ -348,15 +290,14 @@ cat(paste(table_block(
 cat(paste(table_block(
   shrink(tab_country_panel_b),
   title = "Panel B: Continuous Variables",
-  notes = paste(
+    notes = paste(
     "Panel A reports the mean (share equal to one) and number of",
     "observations for all binary variables used in the regression",
-    "analysis, by country; panel B reports the mean and standard",
+    "analysis, by country; Panel B reports the mean and standard",
     "deviation of the two continuous variables, by country. Both panels",
-    "are calculated over the final regression sample (Table 2, Panel B).",
+    "are calculated over the final regression sample (N = 135, Table 2, Panel B).",
     "All continuous firm-level variables are winsorized at the 5th and",
-    "95th percentiles. Countries are grouped by region (Central Asia vs.",
-    "Baltic States). All variables are defined in Appendix A."
+    "95th percentiles. All variables are defined in Appendix A."
   )
 ), collapse = "\n"))
 ```
@@ -370,7 +311,7 @@ cat(paste(table_block(
 fig_esg_disclosure + guides(fill = guide_legend(nrow = 2))
 ```
 
-Fig. 2.—ESG Disclosure by Country. This figure classifies each sample firm by mandate status (mandated vs. not mandated) and ESG disclosure outcome (disclosed vs. not disclosed), and plots the percentage share of firms in each category, by country. The figure uses the full disclosure sample from Table 2, Panel A.
+Fig. 2.—ESG Disclosure by Country. This figure classifies each sample firm by mandate status (mandated vs. not mandated) and ESG disclosure outcome (disclosed vs. not disclosed), and plots the percentage share of firms in each category, by country. The figure uses the full disclosure sample (N = 141) from Table 2, Panel A.
 
 {{< pagebreak >}}
 
@@ -380,13 +321,12 @@ Fig. 2.—ESG Disclosure by Country. This figure classifies each sample firm by 
 cat(paste(landscape_wrap(table_block(
   shrink(tab_corr),
   title = "Table 6: Pairwise Correlation Matrix",
-  notes = paste(
+    notes = paste(
     "This table reports pairwise Pearson correlation coefficients",
     "between the main variables used in the regression analysis,",
-    "calculated over the final regression sample (N = 135). Variable",
-    "definitions are provided in Appendix A. *, **, and *** denote",
-    "statistical significance at the 10\\%, 5\\%, and 1\\% levels,",
-    "respectively."
+    "calculated over the final regression sample (N = 135). All variables",
+    "are defined in Appendix A. *, **, and *** denote statistical",
+    "significance at the 10\\%, 5\\%, and 1\\% levels, respectively."
   ),
   stretch = TRUE,
   width_cmd = "\\rotwidth"
@@ -399,21 +339,20 @@ cat(paste(landscape_wrap(table_block(
 cat(paste(table_block(
   shrink(tab_reg_main),
   title = "Table 7: Determinants of ESG Disclosure",
-  notes = paste(
+    notes = paste(
     "This table reports OLS (linear probability model) estimates of the",
-    "determinants of ESG disclosure. The dependent variable, ESG",
-    "Disclosure, equals one if a firm publishes any form of ESG-related",
-    "disclosure and zero otherwise. Columns (1)-(4) report estimates from OLS",
-    "regressions that include country fixed effects, which absorb all",
-    "country-invariant characteristics and identify effects from",
-    "within-country variation only. Columns (5)-(9) report pooled OLS",
-    "estimates without country fixed effects, which instead include",
-    "region and country-level institutional controls.",
-    "For columns (1)-(4), Adj. R² (within) reports the share of within-country variation",
-    "in ESG Disclosure explained by the covariates alone, net of the",
-    "country fixed effects. Adj. R² (overall) reports the share",
-    "of total variation explained by the covariates and fixed effects",
-    "combined. Heteroskedasticity-robust (HC1) standard",
+    "determinants of ESG disclosure. The dependent variable,",
+    "\\emph{ESG Disclosure}, equals one if a firm discloses ESG information either within its integrated annual report or in a standalone ESG report, and zero otherwise. Columns (1)--(4) report",
+    "estimates from OLS regressions that include country fixed effects,",
+    "which absorb all country-invariant characteristics and identify",
+    "effects from within-country variation only. Columns (5)--(9) report",
+    "pooled OLS estimates without country fixed effects, which instead",
+    "include region and country-level institutional controls.",
+    "For columns (1)--(4), Adj. R² (within) reports the share of",
+    "within-country variation in \\emph{ESG Disclosure} explained by the",
+    "covariates alone, net of the country fixed effects. Adj. R² (overall)",
+    "reports the share of total variation explained by the covariates and",
+    "fixed effects combined. Heteroskedasticity-robust (HC1) standard",
     "errors are reported in parentheses below each coefficient. All",
     "variables are defined in Appendix A. *, **, and *** denote statistical",
     "significance at the 10\\%, 5\\%, and 1\\% levels, respectively."
@@ -427,40 +366,16 @@ cat(paste(table_block(
 #| results: asis
 
 cat(paste(table_block(
-  shrink(tab_reg_robustness),
-  title = "Appendix B: Robustness: Firth Penalized Logistic Regression (Pooled Specifications)",
-  center = TRUE,
-  notes = paste(
-    "This table reports Firth's penalized maximum likelihood logistic",
-    "regression estimates as a robustness check on the pooled",
-    "specifications of Table 7, columns (5)-(9). The dependent variable is",
-    "unchanged. Firth's penalized logistic regression applies a",
-    "bias-reduction penalty to the logistic likelihood function, which",
-    "keeps coefficient estimates finite under complete or quasi-complete",
-    "separation in the data. Column numbering corresponds to the",
-    "matching specifications in Table 7. McFadden's",
-    "pseudo-R-squared is reported in place of adjusted R-squared.",
-    "Standard errors are reported in parentheses below each",
-    "coefficient. *, **, and *** denote statistical significance at the",
-    "10\\%, 5\\%, and 1\\% levels, respectively. All variables are",
-    "defined in Appendix A."
-  )
-), collapse = "\n"))
-```
-
-{{< pagebreak >}}
-
-```{r}
-#| results: asis
-
-cat(paste(table_block(
   shrink(tab_reg_heterogeneity),
   title = "Table 8: Regional Heterogeneity in ESG Disclosure Determinants",
   center = TRUE,
-  notes = paste(
+    notes = paste(
     "This table examines whether the effect of foreign ownership, state ownership,",
     "mandatory ESG regulation, and Soviet-era incorporation on ESG",
-    "disclosure differs by region. Each column reports a separate OLS regression with country fixed effects, including Sensitive Industry, ln(Total Assets), and ROA as controls together with the indicated variable and its interaction with an indicator for Central Asia. Marginal",
+    "disclosure differs by region. The dependent variable,",
+    "\\emph{ESG Disclosure}, equals one if a firm discloses ESG information",
+    "either within its integrated annual report or in a standalone ESG",
+    "report, and zero otherwise. Each column reports a separate OLS regression with country fixed effects, including \\emph{Sensitive Industry}, \\emph{ln(Total Assets)}, and \\emph{ROA} as controls together with the indicated variable and its interaction with an indicator for Central Asia. Marginal",
     "Effect (Central Asia) reports the implied total effect of the",
     "variable of interest in Central Asian firms, computed as the sum of",
     "the base coefficient and the interaction coefficient; its standard",
@@ -484,15 +399,58 @@ cat(paste(table_block(
   shrink(tab_reg_spillover),
   title = "Table 9: Regulatory Spillover in ESG Disclosure",
   center = TRUE,
-  notes = paste(
+    notes = paste(
     "This table presents a supplementary analysis of regulatory spillover",
     "in ESG disclosure, suggesting that non-mandated firms disclose more where an ESG mandate is already in",
-    "force for other firms in their country. The sample is restricted to",
+    "force for other firms in their country. The dependent variable,",
+    "\\emph{ESG Disclosure}, equals one if a firm discloses ESG information",
+    "either within its integrated annual report or in a standalone ESG",
+    "report, and zero otherwise. The sample is restricted to",
     "firms not themselves subject to a mandatory ESG disclosure",
-    "requirement (N = 85). Country ESG Mandate equals one if a binding ESG disclosure mandate - state or exchange-issued - is in force for FY2024 in the firm's country, for at least part of its listed non-financial firm population, regardless of whether this specific firm is itself bound by it, and zero otherwise. Country fixed effects and region are not included: firms with no country-level mandate are located exclusively in Uzbekistan and Kyrgyzstan, so both would absorb most or all of this variable's variation. Heteroskedasticity-robust (HC1) standard errors",
+    "requirement (N = 85). \\emph{Country ESG Mandate} equals one if a binding ESG disclosure mandate --- state or exchange-issued --- is in force for FY2024 in the firm's country, for at least part of its listed non-financial firm population, regardless of whether this specific firm is itself bound by it, and zero otherwise. Country fixed effects and region are not included: firms with no country-level mandate are located exclusively in Uzbekistan and Kyrgyzstan, so both would absorb most or all of this variable's variation. Heteroskedasticity-robust (HC1) standard errors",
     "are reported in parentheses below each coefficient. All variables",
     "are defined in Appendix A. *, **, and *** denote statistical significance",
     "at the 10\\%, 5\\%, and 1\\% levels, respectively."
   )
 ), collapse = "\n"))
 ```
+
+{{< pagebreak >}}
+
+```{r}
+#| results: asis
+
+cat(paste(longtable_block(
+  shrink(tab_var_definitions),
+  title = "Appendix A: Variable Definitions"
+), collapse = "\n"))
+```
+
+{{< pagebreak >}}
+
+```{r}
+#| results: asis
+
+cat(paste(table_block(
+  shrink(tab_reg_robustness),
+  title = "Appendix B: Firth Penalized Logistic Regression as Robustness Check",
+  center = TRUE,
+    notes = paste(
+    "This table reports Firth's penalized maximum likelihood logistic",
+    "regression estimates as a robustness check on the pooled",
+    "specifications of Table 7, columns (5)--(9). The dependent variable is",
+    "unchanged, \\emph{ESG Disclosure}. Column numbering corresponds to the",
+    "matching specifications in Table 7. McFadden's",
+    "pseudo-R-squared is reported in place of adjusted R-squared.",
+    "Standard errors are reported in parentheses below each",
+    "coefficient. All variables are defined in Appendix A. *, **, and ***",
+    "denote statistical significance at the 10\\%, 5\\%, and 1\\% levels,",
+    "respectively."
+  )
+), collapse = "\n"))
+```
+
+\pagebreak
+
+# References {.unnumbered}
+

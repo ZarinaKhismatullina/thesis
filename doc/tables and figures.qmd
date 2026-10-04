@@ -1,9 +1,4 @@
 ---
-title: "Tables and Figures"
-bibliography: references.bib
-biblio-style: apsr
-nocite: |
-  @*
 format:
   pdf:
     documentclass: article
@@ -15,6 +10,7 @@ format:
       - "\\usepackage{pdflscape}"
       - "\\usepackage{longtable}"
       - "\\usepackage{array}"
+      - \pagestyle{empty}
       - "\\newlength{\\rotwidth}"
       - "\\AtBeginDocument{\\setlength{\\rotwidth}{\\textheight}}"
 execute:
@@ -28,13 +24,22 @@ library(tidyverse)
 library(gt)
 load("../output/results.rda")
 
-convert_to_latex <- function(gt_table) {
-  gt_table %>%
+convert_to_latex <- function(gt_table, target_width = NULL) {
+  lines <- gt_table %>%
     as_latex() %>%
     strsplit(split = "\n", fixed = TRUE) %>%
-    unlist() %>%
-    str_replace(fixed("{tabular*}"), "{tabular}") %>%
-    str_replace(fixed("{\\linewidth}{@{\\extracolsep{\\fill}}"), "{")
+    unlist()
+  if (is.null(target_width)) {
+    lines %>%
+      str_replace(fixed("{tabular*}"), "{tabular}") %>%
+      str_replace(fixed("{\\linewidth}{@{\\extracolsep{\\fill}}"), "{")
+  } else {
+    # Keep gt's native tabular*/extracolsep{fill} form so the table spreads
+    # to target_width via column spacing, not a graphics-level rescale (which
+    # would also enlarge the font set by shrink()).
+    lines %>%
+      str_replace(fixed("{\\linewidth}"), paste0("{", target_width, "}"))
+  }
 }
 
 convert_to_longtable <- function(gt_table) {
@@ -66,8 +71,16 @@ shrink <- function(gt_tbl) tab_options(gt_tbl, table.font.size = px(9))
 
 table_block <- function(gt_tbl, title, subtitle = NULL, notes = NULL,
                          width_cmd = "\\textwidth", stretch = FALSE,
-                         center = FALSE, wrap = NULL) {
-  latex_lines <- convert_to_latex(gt_tbl)
+                         center = FALSE, wrap = NULL, fill = FALSE) {
+  # adjustbox{width=...} hits the target width by rescaling the whole table
+  # (font included), which is fine for wrap= tables (scale factor is small)
+  # but visibly enlarges font on tables with no wrap= columns. fill = TRUE
+  # opts a specific table into gt's native tabular*/extracolsep{fill} form
+  # instead, which spreads the gaps between columns and leaves font size
+  # (set by shrink()) untouched. Opt-in per call, not inferred, since some
+  # non-wrap tables (e.g. Table 6) still render better with plain scaling.
+  use_fill <- stretch && fill
+  latex_lines <- convert_to_latex(gt_tbl, target_width = if (use_fill) width_cmd else NULL)
   if (!is.null(wrap)) latex_lines <- wrap_cols(latex_lines, wrap)
   body <- head(latex_lines[-(1:2)], -1)
   notes_block <- if (is.null(notes)) {
@@ -82,14 +95,23 @@ table_block <- function(gt_tbl, title, subtitle = NULL, notes = NULL,
     )
   }
   adjustbox_opt <- if (stretch) "width" else "max width"
-  table_lines <- c(
-    paste0("\\begin{adjustbox}{", adjustbox_opt, "=", width_cmd, "}"),
-    "\\begin{threeparttable}",
-    body,
-    notes_block,
-    "\\end{threeparttable}",
-    "\\end{adjustbox}"
-  )
+  table_lines <- if (use_fill) {
+    c(
+      "\\begin{threeparttable}",
+      body,
+      notes_block,
+      "\\end{threeparttable}"
+    )
+  } else {
+    c(
+      paste0("\\begin{adjustbox}{", adjustbox_opt, "=", width_cmd, "}"),
+      "\\begin{threeparttable}",
+      body,
+      notes_block,
+      "\\end{threeparttable}",
+      "\\end{adjustbox}"
+    )
+  }
   if (center) {
     table_lines <- c("\\begin{center}", table_lines, "\\end{center}")
   }
@@ -124,6 +146,8 @@ landscape_wrap <- function(lines) c("\\begin{landscape}", lines, "\\end{landscap
 ```
 
 {{< pagebreak >}}
+
+# Tables and Figures {.unnumbered}
 
 ```{r}
 #| fig-width: 6
@@ -290,6 +314,8 @@ cat(paste(table_block(
 cat(paste(table_block(
   shrink(tab_country_panel_b),
   title = "Panel B: Continuous Variables",
+  stretch = TRUE,
+  fill = TRUE,
     notes = paste(
     "Panel A reports the mean (share equal to one) and number of",
     "observations for all binary variables used in the regression",
@@ -399,6 +425,8 @@ cat(paste(table_block(
   shrink(tab_reg_spillover),
   title = "Table 9: Regulatory Spillover in ESG Disclosure",
   center = TRUE,
+  stretch = TRUE,
+  fill = TRUE,
     notes = paste(
     "This table presents a supplementary analysis of regulatory spillover",
     "in ESG disclosure, suggesting that non-mandated firms disclose more where an ESG mandate is already in",
@@ -435,6 +463,8 @@ cat(paste(table_block(
   shrink(tab_reg_robustness),
   title = "Appendix B: Firth Penalized Logistic Regression as Robustness Check",
   center = TRUE,
+  stretch = TRUE,
+  fill = TRUE,
     notes = paste(
     "This table reports Firth's penalized maximum likelihood logistic",
     "regression estimates as a robustness check on the pooled",
@@ -449,8 +479,3 @@ cat(paste(table_block(
   )
 ), collapse = "\n"))
 ```
-
-\pagebreak
-
-# References {.unnumbered}
-

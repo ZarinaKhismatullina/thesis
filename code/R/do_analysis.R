@@ -39,8 +39,6 @@ total_exchange <- sample_selection %>%
   summarise(across(all_of(exchanges), sum)) %>%
   mutate(step = "Total number of observations per stock exchange", .before = 1)
 
-# total_tbl is passed explicitly (rather than closed over) so this can be
-# reused for both Panel A (disclosure sample) and Panel B (regression sample).
 total_row <- function(total_tbl, label, group_var = NULL) {
   long <- total_tbl %>%
     select(-step) %>%
@@ -69,18 +67,12 @@ sample_selection <- bind_rows(
 
 
 # --- Read data ------------------------------------------------------------------
-# Moved up (was originally below the old Panel A block) so smp/smp_reg exist
-# before Panel B, which needs both to compute its exclusions live.
 
 log_info("Reading data...")
 smp <- read_parquet(global_cfg$base_sample)
 
 
 # --- Restrict to the common regression-ready sample ------------------------------
-# Moved up from its original position near the bottom of the script, for the
-# same reason. Nothing about its logic changes - descriptive figures/tables
-# below still use the full smp (141); only the regression and Panel B use
-# smp_reg (135).
 
 reg_vars <- c(
   "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
@@ -105,10 +97,8 @@ log_info(
 #
 # Each reg_vars field is bucketed into a missingness category; categories are
 # applied sequentially so a firm missing fields in two categories is only
-# counted once, under whichever category is checked first (this mirrors how
-# Panel A's own waterfall avoids double-counting). Categories that turn out
-# to have zero drops are dropped from the table automatically, so this stays
-# accurate without hand-editing if the underlying data changes.
+# counted once, under whichever category is checked first. Categories that turn out
+# to have zero drops are dropped from the table automatically.
 
 missingness_categories <- list(
   "Less: missing ownership data (state and/or foreign ownership)" =
@@ -127,10 +117,6 @@ missingness_categories <- list(
 
 stopifnot(setequal(unlist(missingness_categories, use.names = FALSE), reg_vars))
 
-# Exchange-level counts for the exclusion rows only, via grepl (so a
-# dual-listed firm's exclusion is attributed to every exchange it's actually
-# on - the same convention Panel A's own "Less" rows use). The Disclosure
-# sample and Total rows below are NOT recomputed this way - see comment there.
 count_by_exchange <- function(data) {
   exchanges %>%
     set_names() %>%
@@ -174,11 +160,6 @@ sample_selection_reg <- bind_rows(
 
 
 # --- Two separate tables, one per panel -------------------------------------
-# Split rather than combined with groupname_col, since each panel now needs
-# its own full-width landscape page in the rendered PDF - a shared gt object
-# can't be split across two pages. Each carries the full spanner header, per
-# the earlier design rule: full headers on every page when panels don't fit
-# together, not exchange columns repeated without labels.
 
 add_exchange_spanners <- function(gt_tbl) {
   gt_tbl %>%
@@ -261,7 +242,6 @@ all_counts <- disclosure_counts(smp) %>%
   mutate(country = "All Countries (Total)") %>%
   pivot_wider(names_from = country, values_from = n)
 
-# Fixed row order, independent of how the joins below happen to sort things.
 step_order <- c(
   "N", "Integrated Annual Report", "ESG Disclosure",
   "(a) ESG Standalone Report", "(b) ESG in Integrated Annual Report",
@@ -289,7 +269,7 @@ tab_disclosure_coverage <- country_counts %>%
 # firms specifically, how many comply (compliance). For FIN, mandatory_fin_
 # report is 1 for virtually the whole sample, so "compliance" and "overall
 # disclosure rate" collapse into the same number - only the distribution
-# chart is built for FIN, not a separate (redundant) compliance chart.
+# chart is built for FIN, not a separate compliance chart.
 
 country_order <- c("Kazakhstan", "Uzbekistan", "Kyrgyzstan", "Estonia", "Latvia", "Lithuania")
 
@@ -305,8 +285,7 @@ category_colors <- c(
 )
 
 # By country: % of firms in each of the 5 mandate x disclosure categories.
-# The 5th category (grey) covers firms with an unresolved mandate status, so
-# every bar sums to 100% instead of leaving an unexplained gap.
+# The 5th category (grey) covers firms with an unresolved mandate status.
 mandate_disclosure_breakdown <- function(data, mandate_var, disclosure_var) {
   data %>%
     mutate(
@@ -356,8 +335,7 @@ plot_mandate_disclosure <- function(data) {
 }
 
 # Among mandated firms only: % disclosed vs. not, by country. Countries with
-# zero mandated firms show no bar and are labeled "No mandate" rather than a
-# misleading 0%.
+# zero mandated firms show no bar and are labeled "No mandate".
 mandate_compliance <- function(data, mandate_var, disclosure_var) {
   data %>%
     mutate(
@@ -420,40 +398,23 @@ fig_fin_disclosure <- plot_mandate_disclosure(
 
 # --- WGI institutional-quality comparison, all 6 dimensions -------------------
 
-# Country-level only (6 rows) - read directly from country_characteristics.csv
-# rather than through smp, since only wgi_rule_of_law is an actual regression
-# covariate (already merged into base_sample.parquet in prepare_data.R). The
-# other 5 dimensions appear only here, to show the Region/institutional-
-# quality link holds across the full WGI battery, not just the one dimension
-# used in the regressions.
-
 wgi_dim_labels <- c(
   "Control of Corruption", "Government Effectiveness", "Political Stability",
   "Regulatory Quality", "Rule of Law", "Voice and Accountability"
 )
 
-# Matched by ISO3 code, not country name - the source file spells Kyrgyzstan
-# as "Kyrgyz Republic", so a name-based filter silently drops it. Mapping
-# back through country_iso3_order also restores the display names used
-# everywhere else in this project.
+# Matched by ISO3 code
 country_iso3_order <- c(
   Kazakhstan = "KAZ", Kyrgyzstan = "KGZ", Tajikistan = "TJK",
   Turkmenistan = "TKM", Uzbekistan = "UZB",
   Estonia = "EST", Latvia = "LVA", Lithuania = "LTU"
 )
 
-# Separate from country_order (which stays scoped to the 6 countries with
-# sample firms, for the mandate/disclosure charts) - this figure is a
-# country-level institutional comparison across all 8 sample countries,
-# independent of firm-level sample coverage.
 country_order_wgi <- c(
   "Kazakhstan", "Kyrgyzstan", "Tajikistan", "Turkmenistan", "Uzbekistan",
   "Estonia", "Latvia", "Lithuania"
 )
 
-# matches() rather than exact column names sidesteps a trailing-space
-# mismatch in the raw header ("Political Stability ... (+2.5) " has one) -
-# column order in the source file already matches wgi_dim_labels' order.
 wgi_long <- read_csv(global_cfg$country_characteristics, col_types = cols()) %>%
   filter(`Country Code` %in% country_iso3_order) %>%
   mutate(country = names(country_iso3_order)[match(`Country Code`, country_iso3_order)]) %>%
@@ -467,8 +428,7 @@ wgi_long <- read_csv(global_cfg$country_characteristics, col_types = cols()) %>%
 
 # Per-country color (grouped by region hue, darker to brighter in
 # alphabetical order within each region) and shape (circle = Central Asia,
-# square = Baltics) - mapping both aesthetics to the same variable merges
-# them into one legend automatically.
+# square = Baltic states).
 country_colors_wgi <- c(
   "Kazakhstan" = "#7F1D1D", "Kyrgyzstan" = "#C1440E", "Tajikistan" = "#D9A520",
   "Turkmenistan" = "#B5456E", "Uzbekistan" = "#E8743B",
@@ -480,8 +440,6 @@ country_shapes_wgi <- c(
   "Estonia" = 15, "Latvia" = 15, "Lithuania" = 15
 )
 
-# Symmetric x-axis around zero, sized to the actual data range, so visual
-# distance left/right of the dashed zero line is directly comparable.
 wgi_max_abs <- max(abs(wgi_long$score), na.rm = TRUE) * 1.1
 
 fig_wgi_dotstrip <- ggplot(wgi_long, aes(x = score, y = dimension, color = country, shape = country)) +
@@ -496,13 +454,6 @@ fig_wgi_dotstrip <- ggplot(wgi_long, aes(x = score, y = dimension, color = count
 
 # --- Regulations table: mandatory rules and voluntary guidance ----------------
 
-# N Affected is computed directly from smp, not typed in - each row's count
-# is the sample firms actually eligible under that regulation's own scope.
-# Structural zeros (financial firms, bond-only rules, not-yet-effective
-# rules, and NFRD - superseded by CSRD as the FY2024 instrument) are
-# hardcoded with a comment, since there's no sample variable to compute them
-# from; everything else is a live count.
-
 regulations_mandatory <- tribble(
   ~id,           ~country_region, ~issuer,                                             ~regulation,                                                                                                    ~level,     ~effective_year, ~scope,                                                     ~disclosure_venue,
   "kaz_mne",     "Kazakhstan",    "Minister of National Economy",                       "MNE Order No. 21",                                                                                            "State",    2018,            "State-controlled, listed joint-stock companies",           "Annual Report or Standalone Report",
@@ -513,8 +464,8 @@ regulations_mandatory <- tribble(
   "uzb_mef_3736","Uzbekistan",    "Ministry of Economy and Finance and Central Bank",   "Decision No. 3736",                                                                                            "State",    2027,            "Public interest entities",                                 "Standalone Report",
   "kgz_nbkr_gov","Kyrgyzstan",    "National Bank",                                      "Resolution No. 2024-P-12/71-4-(NPA)", "State", 2024,       "Commercial banks",                                         "Not Specified",
   "kgz_kse_m",   "Kyrgyzstan",    "KSE",                                                "Listing Rules of KSE", "Exchange", 2014, "Issuers of green, social, and other sustainability bonds", "Annual Report or Standalone Report",
-  "balt_nfrd",   "Baltics",       "European Parliament & Council of the EU",            "NFRD \u2014 Directive 2014/95/EU",                                                                            "State",    2017,            "Public interest entities exceeding 500 employees",         "Management Report or Standalone Report",
-  "balt_csrd",   "Baltics",       "European Parliament & Council of the EU",            "CSRD \u2014 Directive (EU) 2022/2464",                                                                        "State",    2024,            "Public interest entities exceeding 500 employees",         "Management Report"
+  "balt_nfrd",   "Baltic states", "European Parliament & Council of the EU",            "NFRD \u2014 Directive 2014/95/EU",                                                                            "State",    2017,            "Public interest entities exceeding 500 employees",         "Management Report or Standalone Report",
+  "balt_csrd",   "Baltic states", "European Parliament & Council of the EU",            "CSRD \u2014 Directive (EU) 2022/2464",                                                                        "State",    2024,            "Public interest entities exceeding 500 employees",         "Management Report"
 )
 
 n_affected_mandatory <- c(
@@ -574,7 +525,7 @@ star_label <- function(p) {
   case_when(p < 0.01 ~ "***", p < 0.05 ~ "**", p < 0.10 ~ "*", TRUE ~ "")
 }
 
-# Central Asia minus Baltics mean difference, with significance stars from a
+# Central Asia minus Baltic states mean difference, with significance stars from a
 # two-sample t-test. Applied identically to binary (0/1) and continuous
 # variables.
 mean_diff <- function(x, region) {
@@ -643,11 +594,12 @@ tab_desc_panel_a <- map2_dfr(binary_vars$var_name, binary_vars$label, binary_row
   cols_label(
     N_full = "N", Mean_full = "Mean", N_ca = "N", Mean_ca = "Mean",
     N_baltics = "N", Mean_baltics = "Mean",
-    Diff = "Diff (Central Asia \u2212 Baltics)"
+    Diff = "Diff (Central Asia \u2212 Baltic states)"
   ) %>%
+  cols_align(align = "left", columns = Diff) %>%
   tab_spanner(label = "Full Sample", columns = c(N_full, Mean_full)) %>%
   tab_spanner(label = "Central Asia", columns = c(N_ca, Mean_ca)) %>%
-  tab_spanner(label = "Baltics", columns = c(N_baltics, Mean_baltics)) %>%
+  tab_spanner(label = "Baltic states", columns = c(N_baltics, Mean_baltics)) %>%
   row_group_order(groups = group_order)
 
 
@@ -667,7 +619,7 @@ continuous_block <- function(var, label) {
     group_stats(x[r == "Central Asia"]) %>%
       mutate(row_label = paste(label, "\u2014 Central Asia"), Diff = ""),
     group_stats(x[r == "Baltics"]) %>%
-      mutate(row_label = paste(label, "\u2014 Baltics"), Diff = "")
+      mutate(row_label = paste(label, "\u2014 Baltic states"), Diff = "")
   )
 }
 
@@ -675,16 +627,10 @@ tab_desc_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label, co
   select(row_label, N, Mean, SD, P5, Median, P95, Diff) %>%
   gt(rowname_col = "row_label") %>%
   fmt_number(columns = c(Mean, SD, P5, Median, P95), decimals = 3) %>%
-  cols_label(Diff = "Diff (Central Asia \u2212 Baltics)")
+  cols_label(Diff = "Diff (Central Asia \u2212 Baltic states)") %>%
+  cols_align(align = "left", columns = Diff)
 
 # --- Country-level descriptive statistics (same variables as table 4) --------
-#
-# Same variable list, grouping, and structure as tab_desc_panel_a/b, with
-# country columns/rows in place of the Full Sample/Central Asia/Baltics
-# split, and no Diff column (a single pairwise test doesn't generalize to
-# six groups). Lets any region-level claim in section 5.1 - including ones
-# built on variables outside the regression itself, like Integrated Annual Report - be
-# checked against which country is actually driving it.
 
 country_order_composition <- c(
   "Kazakhstan", "Kyrgyzstan", "Uzbekistan", "Estonia", "Latvia", "Lithuania"
@@ -709,8 +655,6 @@ tab_country_panel_a <- map2_dfr(binary_vars$var_name, binary_vars$label, binary_
   fmt_number(columns = starts_with("Mean_"), decimals = 3) %>%
   row_group_order(groups = group_order)
 
-# Column labels and per-country spanners, one pass per country for
-# readability - mirrors add_exchange_spanners' id/spanners nesting pattern.
 for (ctry in country_order_composition) {
   tab_country_panel_a <- tab_country_panel_a %>%
     cols_label(!!paste0("N_", ctry) := "N", !!paste0("Mean_", ctry) := "Mean") %>%
@@ -723,7 +667,7 @@ for (ctry in country_order_composition) {
 
 tab_country_panel_a <- tab_country_panel_a %>%
   tab_spanner(label = "Central Asia", spanners = c("Kazakhstan", "Kyrgyzstan", "Uzbekistan")) %>%
-  tab_spanner(label = "Baltics", spanners = c("Estonia", "Latvia", "Lithuania"))
+  tab_spanner(label = "Baltic states", spanners = c("Estonia", "Latvia", "Lithuania"))
 
 # --- Panel B: continuous variables, countries as columns (trimmed) -----------
 
@@ -748,8 +692,7 @@ tab_country_panel_b <- map2_dfr(continuous_vars$var_name, continuous_vars$label,
 # Same comparison run on two groups: (1) firms with no personal ESG mandate
 # ("voluntary disclosers" vs. not), and (2) firms with a personal ESG mandate
 # (compliant vs. non-compliant). Uses the disclosure-sample object that feeds
-# Table 2 / Figure 1 (before regression-sample listwise deletion), so the
-# N's line up with Figure 1's percentages.
+# Table 2 / Figure 1.
 
 compare_disclosers <- function(data, label) {
   summary_tbl <- data %>%
@@ -815,17 +758,6 @@ smp_mandated %>%
 
 # --- Correlation table -------------------------------------------------------
 
-# Pearson correlations only. With most variables binary, Spearman and Pearson
-# are mathematically identical for any binary-binary pair (ranking a 0/1
-# variable doesn't change it), so a dual Pearson/Spearman matrix would be
-# redundant here.
-
-# Variable order mirrors tab_desc_panel_a's block structure - Disclosure,
-# then Regulatory, then Firm characteristics - with Region and WGI
-# inserted as a country-level institutional block right after Mandatory ESG
-# and its disaggregation. Keeping them contiguous makes their high pairwise 
-# correlations visually adjacent on the diagonal, rather than scattered across 
-# the matrix.
 corr_vars <- tibble(
   var_name = c(
     "any_esg", "mandatory_esg", "mandatory_esg_state", "mandatory_esg_exchange",
@@ -842,21 +774,15 @@ corr_vars <- tibble(
   )
 )
 
-# Number labels keep the matrix compact - full names appear once as row
-# labels (stub), columns are just referenced by number.
 rlabels <- paste0("(", seq_len(nrow(corr_vars)), ") ", corr_vars$label)
 
-# region_num: Central Asia = 1, Baltics = 0 - a plain numeric dummy, computed
-# here rather than stored on smp_reg, since it exists only for this matrix.
+# region_num: Central Asia = 1, Baltic states = 0
 
 corr_mat <- smp_reg %>%
   mutate(region_num = as.integer(region == "Central Asia")) %>%
   select(all_of(corr_vars$var_name))
 colnames(corr_mat) <- rlabels
 
-# Lower-triangular Pearson matrix with significance stars, computed pairwise
-# via cor.test() so p-values are available for star_label(); upper triangle
-# left blank since it's a mirror image of the lower one.
 pearson_with_stars <- function(data) {
   n <- ncol(data)
   out <- matrix("", n, n, dimnames = list(colnames(data), colnames(data)))
@@ -878,11 +804,6 @@ tab_corr <- pearson_with_stars(corr_mat) %>%
   cols_label(!!!setNames(paste0("(", seq_len(nrow(corr_vars)), ")"), rlabels))
 
 # --- Variable definitions table -----------------------------------------------
-#
-# Documents every variable appearing in any table or figure in this project,
-# not just regression covariates. Grouped the same way as tab_desc_panel_a
-# (Disclosure / Regulatory / Firm characteristics), plus a Country-level
-# group for Region/WGI/GDP, which only enter from the correlation table on.
 
 var_definitions_order <- c(
   "Disclosure variables", "Regulatory variables",
@@ -1005,24 +926,6 @@ tab_var_definitions <- var_definitions %>%
 
 # --- Regression analysis ------------------------------------------------------
 
-# Within-country specifications, Country Fixed Effects via fixest - region,
-# WGI, and GDP cannot appear here (they're fully absorbed by the country FE,
-# by construction), so this panel only ever tests firm-level traits. Each
-# added block has one clear theoretical purpose: (1) the regulatory mandate
-# alone; (2) standard firm-level controls (size, profitability, industry),
-# which carry no focal hypothesis of their own, testing whether the mandate
-# survives basic confounds; (3) Foreign Ownership and State Ownership added
-# together, introducing the international-exposure and domestic-ownership
-# stories; (4), the preferred/core model, adds Soviet-Era Firm, completing
-# the legacy story. Pooled specifications (5)-(8) mirror (1)-(4) exactly,
-# replacing country FE with Region - the only place a Region coefficient can
-# be estimated at all, since it's absorbed by construction under FE. (9) is
-# an exact twin of (8), substituting Rule of Law for Region, isolating what
-# changes purely from that swap - including whether Soviet-Era Firm's
-# coefficient survives it. Both panels use HC1 SEs at the firm level (not
-# clustered by country - with only six clusters, standard cluster-robust SEs
-# are themselves unreliable; see project notes).
-
 mods_fe <- list(
   "(1)" = feols(any_esg ~ mandatory_esg | country, data = smp_reg),
   "(2)" = feols(any_esg ~ mandatory_esg + sensitive_industry +
@@ -1065,9 +968,6 @@ var_labels <- c(
   "wgi_rule_of_law"         = "Rule of Law"
 )
 
-# Country FE indicator row: 10 coefficient terms x 2 print-rows
-# (estimate + SE) = 20, so this sits at position 21, right before
-# Observations/Adj. R^2. Confirm by eye once rendered and adjust if off.
 fe_row <- tibble(
   term = "Country Fixed Effects",
   `(1)` = "Yes", `(2)` = "Yes", `(3)` = "Yes", `(4)` = "Yes",
@@ -1100,11 +1000,6 @@ tab_reg_main <- modelsummary(
   )
 
 # --- Variance Inflation Factors -------------------------------------------------
-# Checked only on the pooled (lm) specifications that pair Mandatory ESG with
-# a second regulation- or institutional-quality-adjacent variable - car::vif()
-# doesn't support fixest objects, and a standard VIF on the FE model (5)
-# wouldn't correctly reflect within-country collinearity anyway, so it's
-# intentionally excluded rather than computed incorrectly.
 
 vif_check_models <- c("(7)", "(8)", "(9)")
 
@@ -1116,14 +1011,7 @@ for (m in vif_check_models) {
 }
 
 # --- Wald test: State Ownership vs. Foreign Ownership (Model 4 only) ----------
-# Reported in text/notes, not as a table row - Model (4) is the preferred
-# specification where both coefficients coexist. fixest::wald() tests
-# whether a GROUP of coefficients is jointly zero (matched by regex), not
-# equality between two named coefficients, so it silently returned NA -
-# "state_ownership = foreign_ownership" doesn't match any coefficient name
-# as a keep-pattern. Testing the linear combination directly from the
-# model's own HC1 vcov matrix avoids relying on a function built for a
-# different kind of test.
+
 b4 <- coef(mods_fe[["(4)"]])
 V4 <- vcov(mods_fe[["(4)"]], vcov = "HC1")
 diff_4 <- b4["state_ownership"] - b4["foreign_ownership"]
@@ -1136,9 +1024,6 @@ wald_4_p <- 2 * pt(-abs(t_stat_4), df = df.residual(mods_fe[["(4)"]]))
 log_info("Wald test, Model (4) State = Foreign Ownership: p = {round(wald_4_p, 3)}")
 
 # --- Untabulated: state ownership and disclosure, by country -----------------
-# Checks the mechanism behind State Ownership's negative pooled Table 7
-# coefficient: whether it reflects a consistent within-country relationship,
-# or is driven by one country's composition (see Section 5.2).
 
 smp_reg %>%
   group_by(country, state_ownership) %>%
@@ -1147,10 +1032,6 @@ smp_reg %>%
   print(n = Inf, width = Inf)
 
 # --- Untabulated: winsorization robustness (1st/99th vs. 5th/95th) -----------
-# Re-estimates every Table 7 column that includes ln(Total Assets) or ROA
-# (FE: 2-4; pooled: 6-9) after winsorizing both at the 1st/99th percentile
-# instead of the 5th/95th used throughout. Columns (1) and (5) are excluded
-# since neither variable enters those specifications.
 
 winsorize <- function(x, probs = c(0.01, 0.99)) {
   bounds <- quantile(x, probs, na.rm = TRUE)
@@ -1198,10 +1079,7 @@ for (m in names(mods_w2)) {
   )
 }
 
-# --- Untabulated: Mandatory ESG disaggregated into state vs. exchange -------
-# mandatory_esg_state and mandatory_esg_exchange combine via OR into
-# mandatory_esg in Table 7; here they enter as separate regressors to see
-# whether the result is driven by one instrument, both, or neither.
+# --- Untabulated: Mandatory ESG disaggregated into state vs. exchange --------
 
 mod_disagg_fe4 <- feols(
   any_esg ~ mandatory_esg_state + mandatory_esg_exchange + sensitive_industry +
@@ -1232,13 +1110,6 @@ log_info(
 
 
 # --- Robustness: Firth's penalized logit, Panel B specifications --------------
-#
-# Firth's penalized logit, not plain logit: Kyrgyzstan is a fully
-# deterministic subgroup (0/10 firms disclose), which risks non-convergence/
-# unstable estimates under ordinary maximum-likelihood logit regardless of
-# which pooled regressor set is used. Same five Panel B specifications as
-# tab_reg_main's (5)-(9), same smp_reg sample - tests whether the pooled
-# results survive moving off the linear probability model.
 
 tidy.logistf <- function(x, ...) {
   tibble(
@@ -1292,17 +1163,8 @@ tab_reg_robustness <- modelsummary(
 )
 
 
-# --- Heterogeneity by region: interactions, not split samples -----------------
-#
-# Country FE absorbs Region's own main effect (constant within each country),
-# but an interaction between Region and a firm-level variable survives, since
-# the firm-level component still varies within every country. Three interactions:
-# Foreign Ownership and Mandatory ESG per feedback, plus Soviet-Era Firm.
+# --- Heterogeneity by region: interactions ------------------------------------
 
-# base + interaction coefficient, its own SE/CI, and the interaction term's
-# own p-value (the test of whether the regional difference itself is
-# significant) - all computed from the model's HC1 vcov for consistency with
-# every other table in this project.
 implied_effect <- function(model, base_term, interaction_term, level = 0.95) {
   b <- coef(model)
   V <- vcov(model, vcov = "HC1")
@@ -1382,8 +1244,6 @@ var_labels_het <- c(
   "roa_w"                                = "ROA"
 )
 
-# 9 coefficient terms x 2 print-rows (estimate + SE) = 18, so position 19,
-# right before Observations. Confirm by eye once rendered and adjust if off.
 implied_rows <- tibble(
   term = c(
     "Marginal Effect (Central Asia)", "95% CI (Central Asia)",
@@ -1429,10 +1289,7 @@ tab_reg_heterogeneity <- modelsummary(
 
 
 # --- Additional analysis: regulatory spillover effects ------------------------
-#
-# Motivated by a pattern in the descriptive results (Figure 2): disclosure
-# among non-mandated firms appears higher in countries where a mandate is
-# already in force for other firms. This tests that pattern directly. 
+
 # Sample restricted to non-mandated firms only.
 
 mods_spillover_check <- lm(
@@ -1491,11 +1348,7 @@ tab_reg_spillover <- modelsummary(
   output = "gt"
 )
 
-# --- Untabulated: leave-Kyrgyzstan-out, spillover specification -------------
-# Kyrgyzstan's 0% ESG disclosure rate makes it a complete-separation
-# subgroup within the spillover sample; this checks whether the coefficient
-# survives its exclusion, leaving Uzbekistan as the sole country with no
-# country-level mandate in force.
+# --- Untabulated: leave-Kyrgyzstan-out, spillover specification --------------
 
 smp_spillover_noKGZ <- smp_spillover %>% filter(country != "Kyrgyzstan")
 

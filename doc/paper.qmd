@@ -1,0 +1,550 @@
+---
+bibliography: references.bib
+biblio-style: apsr
+nocite: |
+  @*
+format:
+  pdf:
+    documentclass: article
+    number-sections: true
+    toc: true
+    fig-cap-location: top
+    header-includes:
+      - \usepackage[nolists]{endfloat}
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+      - \usepackage{setspace}\onehalfspacing
+      - \setlength{\parindent}{4em}
+      - \setlength{\parskip}{0em}
+      - \usepackage[hang,flushmargin]{footmisc}
+      - \usepackage{caption}
+      - \captionsetup[table]{skip=15pt,font=bf}
+      - \captionsetup[figure]{skip=15pt,font=bf}
+      - \usepackage{array}
+      - \usepackage{threeparttable}
+      - \usepackage{adjustbox}
+      - \usepackage{graphicx}
+      - \usepackage{csquotes}
+      - \usepackage{indentfirst}
+      - \usepackage[margin=1in]{geometry}
+      - \usepackage{pdflscape}
+      - \usepackage{longtable}
+      - \usepackage{ragged2e}
+      - \usepackage{fancyhdr}
+      - \usepackage{pdfpages}
+      - \pagestyle{fancy}
+      - \fancyhf{}
+      - \renewcommand{\headrulewidth}{0pt}
+      - \renewcommand{\footrulewidth}{0pt}
+      - \fancyfoot[R]{\makebox[0pt][r]{\thepage\hspace{1in}}}
+      - \setlength{\footskip}{0cm}
+      - \newlength{\rotwidth}
+      - \AtBeginDocument{\setlength{\rotwidth}{\textheight}}
+    include-before-body:
+      - titlepage.tex
+      - preamble.tex # This sets Roman page numbering before the TOC
+    include-after-body:
+      - declaration.tex
+fontsize: 12pt
+ident: yes
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+\pagebreak
+
+```{r setup}
+library(tidyverse)
+library(gt)
+load("../output/results.rda")
+
+convert_to_latex <- function(gt_table) {
+  gt_table %>%
+    as_latex() %>%
+    strsplit(split = "\n", fixed = TRUE) %>%
+    unlist() %>%
+    str_replace(fixed("{tabular*}"), "{tabular}") %>%
+    str_replace(fixed("{\\linewidth}{@{\\extracolsep{\\fill}}"), "{")
+}
+
+convert_to_longtable <- function(gt_table) {
+  lines <- gt_table %>%
+    as_latex() %>%
+    strsplit(split = "\n", fixed = TRUE) %>%
+    unlist() %>%
+    str_replace(fixed("{tabular*}"), "{longtable}") %>%
+    str_replace(fixed("{\\linewidth}{@{\\extracolsep{\\fill}}"), "{")
+  lines <- head(lines[-(1:2)], -1)
+  first_midrule <- which(str_detect(lines, fixed("\\midrule")))[1]
+  append(lines, "\\endhead", after = first_midrule)
+}
+
+wrap_cols <- function(lines, widths) {
+  idx <- which(str_detect(lines, fixed("\\begin{tabular}{")))[1]
+  full_spec <- str_match(lines[idx], "^\\\\begin\\{tabular\\}\\{(.*)\\}$")[1, 2]
+  tokens <- str_extract_all(full_spec, "\\|?[lcr]")[[1]]
+  for (pos in names(widths)) {
+    i <- as.integer(pos)
+    bar <- if (str_starts(tokens[i], fixed("|"))) "|" else ""
+    tokens[i] <- paste0(bar, ">{\\raggedright\\arraybackslash}p{", widths[[pos]], "}")
+  }
+  lines[idx] <- paste0("\\begin{tabular}{", paste(tokens, collapse = ""), "}")
+  lines
+}
+
+shrink <- function(gt_tbl) tab_options(gt_tbl, table.font.size = px(9))
+
+table_block <- function(gt_tbl, title, subtitle = NULL, notes = NULL,
+                         width_cmd = "\\textwidth", stretch = FALSE,
+                         center = FALSE, wrap = NULL) {
+  latex_lines <- convert_to_latex(gt_tbl)
+  if (!is.null(wrap)) latex_lines <- wrap_cols(latex_lines, wrap)
+  body <- head(latex_lines[-(1:2)], -1)
+  notes_block <- if (is.null(notes)) {
+    character(0)
+  } else {
+    c(
+      "\\begin{tablenotes}[flushleft]",
+      "\\footnotesize",
+      "\\setlength{\\labelsep}{0pt}",
+      paste0("\\item \\emph{Notes}: ", notes),
+      "\\end{tablenotes}"
+    )
+  }
+  adjustbox_opt <- if (stretch) "width" else "max width"
+  table_lines <- c(
+    paste0("\\begin{adjustbox}{", adjustbox_opt, "=", width_cmd, "}"),
+    "\\begin{threeparttable}",
+    body,
+    notes_block,
+    "\\end{threeparttable}",
+    "\\end{adjustbox}"
+  )
+  if (center) {
+    table_lines <- c("\\begin{center}", table_lines, "\\end{center}")
+  }
+  title_lines <- paste0("\\textbf{", title, "}")
+  if (!is.null(subtitle)) {
+    title_lines <- c(title_lines, "", subtitle)
+  }
+  c(
+    title_lines,
+    "\\vspace{4pt}",
+    "",
+    table_lines
+  )
+}
+
+longtable_block <- function(gt_tbl, title, notes = NULL) {
+  notes_lines <- if (is.null(notes)) {
+    character(0)
+  } else {
+    c("", "\\footnotesize", paste0("\\emph{Notes}: ", notes))
+  }
+  c(
+    paste0("\\textbf{", title, "}"),
+    "\\vspace{4pt}",
+    "",
+    convert_to_longtable(gt_tbl),
+    notes_lines
+  )
+}
+
+landscape_wrap <- function(lines) c("\\begin{landscape}", lines, "\\end{landscape}")
+```
+
+\clearpage
+
+# List of Abbreviations {.unnumbered}
+
+\setlength{\parindent}{0em}
+\begin{tabular}{@{}ll}
+\textbf{AGB}  & Ashgabat Stock Exchange \\
+\textbf{AI}   & Artificial Intelligence \\
+\textbf{AIFC} & Astana International Financial Centre \\
+\textbf{AIX}  & Astana International Exchange \\
+\textbf{BTS}  & Stock Exchange of Kyrgyzstan -- BTS \\
+\textbf{CASE} & Central Asian Stock Exchange \\
+\textbf{CI}   & Confidence Interval \\
+\textbf{CIS}  & Commonwealth of Independent States \\
+\textbf{CSRD} & Corporate Sustainability Reporting Directive \\
+\textbf{EBRD} & European Bank for Reconstruction and Development \\
+\textbf{ESG}  & Environmental, Social and Governance \\
+\textbf{ETF}  & Exchange-Traded Fund \\
+\textbf{EU}   & European Union \\
+\textbf{FY}   & Fiscal Year \\
+\textbf{GDP}  & Gross Domestic Product \\
+\textbf{HC1}  & Heteroskedasticity-Consistent (version 1) Standard Errors \\
+\textbf{ICB}  & Industry Classification Benchmark \\
+\textbf{IFRS} & International Financial Reporting Standards \\
+\textbf{ISIN} & International Securities Identification Number \\
+\textbf{KASE} & Kazakhstan Stock Exchange \\
+\textbf{KSE}  & Kyrgyz Stock Exchange \\
+\textbf{LSEG} & London Stock Exchange Group \\
+\textbf{MNE}  & Minister of National Economy (Kazakhstan) \\
+\textbf{NATO} & North Atlantic Treaty Organization \\
+\textbf{NFRD} & Non-Financial Reporting Directive \\
+\textbf{OECD} & Organisation for Economic Co-operation and Development \\
+\textbf{OLS}  & Ordinary Least Squares \\
+\textbf{RIG}  & Nasdaq Riga \\
+\textbf{ROA}  & Return on Assets \\
+\textbf{SD}   & Standard Deviation \\
+\textbf{SE}   & Standard Error \\
+\textbf{TLN}  & Nasdaq Tallinn \\
+\textbf{UN}   & United Nations \\
+\textbf{USSR} & Union of Soviet Socialist Republics \\
+\textbf{UZSE} & Republican Stock Exchange Toshkent \\
+\textbf{VLN}  & Nasdaq Vilnius \\
+\textbf{WGI}  & Worldwide Governance Indicators \\
+\end{tabular}
+
+\newpage
+
+# List of Tables {.unnumbered}
+
+\setlength{\parindent}{0em}
+
+Table 1: ESG Disclosure Regulations by Country
+
+Table 2: Sample Selection and Composition
+
+Table 3: Disclosure Coverage by Region and Country
+
+Table 4: Descriptive Statistics by Region
+
+Table 5: Descriptive Statistics by Country
+
+Table 6: Pairwise Correlation Matrix
+
+Table 7: Determinants of ESG Disclosure
+
+Table 8: Regional Heterogeneity in ESG Disclosure Determinants
+
+Table 9: Regulatory Spillover in ESG Disclosure
+
+Appendix A: Variable Definitions
+
+Appendix B: Firth Penalized Logistic Regression as Robustness Check
+
+# List of Figures {.unnumbered}
+
+Fig. 1. Institutional Quality (Worldwide Governance Indicators), by Country
+
+Fig. 2. ESG Disclosure by Country
+
+\newpage
+
+# Abstract {.unnumbered}
+
+This thesis examines how disclosure differs between listed firms in the Baltic states and Central Asia, and which regulatory and firm-level characteristics are associated with these differences. Using hand-collected regulatory documentation and fiscal year 2024 data for 141 listed firms, it compares financial and ESG (environmental, social and governance) disclosure and, in regression analyses, estimates associations with mandates, ownership, and Soviet legacy. Financial reporting is required everywhere, whereas ESG regulation is EU-anchored in the Baltic states but country-specific and narrower in Central Asia; the disclosure difference lies in ESG. Binding mandates are associated with disclosure between, not within, countries; only firm size is consistently positively associated. Findings are associative, based on few countries. The data set and R code for the analysis are available at <https://github.com/ZarinaKhismatullina/thesis>.
+
+\newpage
+\pagenumbering{arabic}
+
+\newpage
+\pagenumbering{arabic}
+\setlength{\parindent}{4em}
+\setlength{\parskip}{0em}
+\newgeometry{left=6cm, right=1.5cm, top=2cm, bottom=2cm}
+
+# Introduction {#sec-introduction}
+
+Corporate disclosure is the channel through which investors, lenders, and the public observe firms they cannot monitor directly. In recent years this channel has widened from financial statements to environmental, social, and governance (ESG) information. Regulators have followed: by 2022, 38 of the 65 countries in Krueger et al.'s [-@Krueger.2024] global sample required some form of mandatory ESG disclosure. Research on mandatory disclosure has grown with these developments [@Krueger.2024; @Christensen.2021].
+
+This evidence rests on a narrow set of markets. ESG disclosure studies in developed countries have predominantly focused on North America, Australia, and North-Western Europe; and in developing countries studies include a narrow range of emerging economies, such as Malaysia, Singapore, South Africa, and China [@Ali.2017]. The former Soviet Union is more broadly described as an under-researched context for accounting scholarship [@Golubeva.2023].
+
+This thesis addresses this gap and compares two groups of countries: three Baltic states (Estonia, Latvia, Lithuania) and five Central Asian countries (Kazakhstan, Kyrgyzstan, Tajikistan, Turkmenistan, Uzbekistan). All eight were union republics of the USSR and inherited one administrative and accounting system, in which enterprises served a state plan and reporting served the planning authority rather than outside investors [@Bailey.1990]. After 1991 their paths separated. The Baltic states joined the European Union and with it adopted a common regulatory framework for listed companies. The Central Asian republics joined the Commonwealth of Independent States and built country-specific securities-market regimes. By 2024 the two groups occupy entirely separate ranges on all six World Bank Worldwide Governance Indicators. The thesis therefore asks whether these diverging trajectories are reflected in the disclosure behavior of publicly listed firms: how disclosure differs between listed firms in the two regions, and which firm-level characteristics and regulatory exposures are associated with these differences.
+
+It addresses this question at three levels. The first is institutional: how capital-market and reporting regulation differ between the regions. The second is descriptive: how financial and ESG disclosure differ between listed firms in the Baltic states and Central Asia, and in particular whether the gap is specific to ESG reporting or also extends to basic financial reporting. The third concerns associations: which firm-level characteristics and regulatory exposures are associated with ESG disclosure, and whether these associations differ between the regions.
+
+The regulatory documentation is the main basis for the thesis. I collect laws, decrees, action plans, guidance, and related documents at the state and exchange levels and classify each instrument as mandatory or voluntary according to whether it is legally binding. Two features of the regimes emerge. Financial reporting is regulated in both regions: listed firms in every sample country are required to publish annual financial statements. ESG regulation differs. In the Baltic states it is uniform and EU-anchored, following the Non-Financial Reporting Directive (NFRD) and its successor, the Corporate Sustainability Reporting Directive (CSRD), for large public-interest entities. In Central Asia it is country-specific, more recent, and narrower in scope. Kazakhstan is the exception, with a 2018 requirement for state-controlled companies and a 2022 exchange listing rule. Uzbekistan's binding requirements take effect only starting from 2026, and Kyrgyzstan's broader regulation is still at the action-plan stage [@Economist.KG.2026]. Tajikistan and Turkmenistan have no ESG regulation for listed companies, consistent with their small capital markets.
+
+The literature gives competing expectations about how regulation and institutions relate to disclosure. Institutional theory treats a binding requirement as coercive pressure that should raise disclosure among the firms it covers, and non-binding guidance as working through a weaker normative channel [@DiMaggio.1983]. The institutional difference between the two regions adds a caveat. If a rule affects behavior only where it is credibly enforced [@Christensen.2013; @Krueger.2024], the Baltic states, with stronger formal institutions, should show more ESG disclosure. If instead weak institutions leave firms unable to rely on regulators, courts, or the press to vouch for them, voluntary disclosure may substitute for them [@Khanna.1997]. On that view the gap could be smaller, or even reversed.
+
+At the firm level, several channels may drive ESG disclosure in both regions. The first is international exposure. Research on developing and transition economies finds disclosure driven more by external investors and lenders than by domestic enforcement [@AzizulIslam.2008; @Singhania.2023]. I proxy for exposure with foreign ownership, expected to be associated with more disclosure because outside investors depend on public information. State ownership is a second channel. Both regions grew from state-dominated economies, and 34% of the sample firms have a state body among their shareholders (40% in Central Asia, 19% in the Baltics). It can imply public accountability and more disclosure [@Ali.2017], or reduced investor orientation and less [@Crotty.2016]. Soviet-era origin is a third channel. Soviet-era firms make up 47% of the sample, so the legacy is common in both regions. Similar to state ownership, it can have two plausible directions: inherited practice to report to the state only, or greater visibility, since Soviet-era origin suggests old and likely large firms.
+
+The empirical basis is a hand-collected cross-section of listed non-financial firms for fiscal year 2024. The disclosure sample, used to describe disclosure coverage and regulatory exposure, contains 141 firms (103 in Central Asia, 38 in the Baltic states). The regression sample contains 135 firms (98 and 37) after six firms with missing ownership, financial, or regulatory data are excluded. Tajikistan has no listed equities and Turkmenistan's few firms do not survive the sample filters, so the firm-level analysis contrasts three countries in each region. I manually collect financial and ESG reports, and data for explanatory variables, and the disclosure indicators record whether a report is publicly available, not its extent or quality.
+
+The findings follow the three levels. Institutionally, the regimes differ most in ESG regulation, while financial-reporting obligations exist in all countries. Descriptively, the disclosure gap mirrors this: annual financial reports are published by almost all Central Asian firms and by all Baltic firms, whereas ESG information is disclosed by 45 of 103 Central Asian firms and by 30 of 38 Baltic firms. The ESG gap is not a shared regional pattern, however. Kazakhstan's disclosure rate is comparable to that of the Baltic firms, whereas Uzbekistan's is low and Kyrgyzstan's is zero. Two further patterns appear in the data. Compliance among mandated firms is imperfect, and a substantial share of non-mandated firms disclose voluntarily, more often in the countries where a mandate exists for other firms, consistent with a spillover pattern.
+
+In the regressions, a binding mandate is positively associated with disclosure between countries but not within them, so regulation tracks differences between countries more than differences among firms under the same regime. After controlling for mandates and firm characteristics, Central Asian firms remain 32 to 36 percentage points less likely to disclose than Baltic firms, which does not support the substitution view. Associations also differ by region: in Central Asia, mandated firms disclose no more than non-mandated firms in the same country, and foreign ownership is associated with more disclosure in the Baltic states but with less in Central Asia. Firm size is positively associated with disclosure in every specification.
+
+A supplementary analysis of the 85 firms not bound by any mandate tests the spillover pattern further. These firms disclose more where a mandate is in force for other firms in their country. The firms without any country-level mandate are located only in Uzbekistan and Kyrgyzstan, so this result cannot be separated from other country differences and is exploratory.
+
+The findings in this thesis are subject to limitations. The sample covers six countries in a single year, so country-level variables have few independent observations and several coefficients rest on two or three countries. Therefore, the results should be read with caution.
+
+The thesis contributes in two ways. First, it provides a hand-collected, firm-level mapping of financial and ESG disclosure instruments in two post-Soviet regions, drawn from official sources, in a form that others can verify and extend. Second, it describes financial and ESG disclosure side by side for the population of listed firms, which locates the regional gap in ESG reporting rather than in reporting generally, and it reports structured associations with regulatory exposure and firm characteristics, which brings evidence from under-researched regions.
+
+The remainder of the thesis is organized as follows. Chapter 2 sets out the institutional and regulatory background, covering post-Soviet development, capital markets and reporting regulation in Central Asia and in the Baltic states, and the theoretical framework. Chapter 3 describes the sample, data, and methodology. Chapter 4 presents the descriptive results, the regression analyses, and the supplementary analysis. Chapter 5 concludes.
+
+# Institutional and Regulatory Background {#sec-background}
+
+## Post-Soviet transition: shared starting conditions and divergent trajectories {#sec-transition}
+
+Comparison of Central Asian and Baltic disclosure environments begins from a historical puzzle: both regions left the same political and economic system around 1991, and entered independence carrying the same basic institutional inheritance; yet three decades later they occupy different points on the institutional dimensions this thesis treats as relevant to corporate disclosure. This section traces that divergence — from the shared administrative apparatus of the Soviet republics, through the 1991 collapse and the differing paths of reconstruction, to the present-day institutional, capital-market, and reporting configurations — and situates it within a literature that, as the sections below document, has covered the region, and the question of how its firms disclose, unevenly and has not systematically compared the two.
+
+The eight countries — Estonia, Latvia, Lithuania, Kazakhstan, Kyrgyzstan, Tajikistan, Turkmenistan, and Uzbekistan — examined in this thesis entered independence carrying the same basic institutional inheritance. All were union republics of the USSR, subject to one administrative and accounting apparatus in which enterprises were instruments of a state plan rather than autonomous, profit-seeking actors. @Bailey.1990 identifies the defining features of this Soviet accounting system: profit was not a criterion of enterprise survival; double-entry bookkeeping existed to serve macro-level statistical aggregation rather than managerial decision-making; accounting practice was set centrally and applied uniformly; and accountants functioned as state controllers rather than as agents of the firm or its owner. Reporting under this system served the state planning authority, not outside investors. @Kornai.1992 situates this within a wider "socialist system" of soft budget constraints and state paternalism toward the enterprise workforce: the enterprise was frequently a town's sole employer and provided housing, childcare, and healthcare alongside wages [@Crotty.2016].
+
+That inheritance was shared, but not identical. @Melo.2001 construct initial-conditions measures for twenty-eight transition economies, including the number of years each republic had operated under central planning before 1991 — what the authors call market memory. Estonia, Latvia, and Lithuania had spent fifty-one years under the planned system, against seventy-one years for Kazakhstan, Kyrgyzstan, Tajikistan, Turkmenistan and Uzbekistan — a difference that, following the authors, can be seen as a proxy for the degree of institutional change required for transition. On another measure — years of prior independent statehood before Soviet rule — all eight score identically at the lowest level (0), indicating that neither region had a prior period of independent statehood to draw on entering 1991. The two regions were, in other words, distinguished less by whether they inherited a command system than by how long they had lived under it.
+
+The dissolution of the Soviet Union in December 1991 confronted all fifteen successor states with the same immediate problem: constructing market institutions, a legal system for private property, and a system of financial and non-financial reporting appropriate to autonomous, profit-seeking firms [@Golubeva.2023]. How republics responded, however, diverged quickly. @Melo.2001 show that initial conditions alone do not explain the divergence in transition outcomes; economic liberalization — the speed and comprehensiveness of price and trade reform — is the dominant determinant of differences in subsequent growth, and political liberalization is in turn the strongest predictor of how far economic liberalization proceeded. Monetary policy offers one concrete, early marker of the fork: the Baltic states exited the ruble zone unilaterally and within roughly a year of independence, while most non-Baltic former Soviet republics remained inside it until Russia itself forced the issue [@Melo.2001]. The authors interpret this contrast as evidence that some transition economies made a decisive break with the prior system while others reverted repeatedly to old arrangements.
+
+For the Baltic states, this clean break culminated in a decade-long alignment with Western European legal and market institutions and, eventually, membership of the European Union and NATO in 2004. Central Asia's five republics built their post-Soviet institutions inside a different regional framework: all five joined the Commonwealth of Independent States (CIS) at or shortly after independence, alongside most other former Soviet republics. The CIS was created specifically to coordinate continued economic, security, and administrative cooperation among largely the same countries that had just left the Soviet apparatus.
+
+Following independence, countries began building their own capital markets. On the fullest single cross-country snapshot available — Golubeva's [-@Golubeva.2023, Appendix B] compilation of market capitalization to GDP, sourced from CEIC — Kazakhstan's ratio (26.4%, 2020) exceeds every Baltic figure reported: Estonia's 16.9% (2021), Lithuania's 9.3% (2021), and Latvia's 2.5% (2021); Kyrgyzstan's 7.1% (2021) exceeds Latvia's as well, and Uzbekistan's 9.4% (2020) sits close to Lithuania's level. Tajikistan and Turkmenistan report no figure in Golubeva's table, a gap that persists in the World Bank's [-@WorldBank.2025] more current series, which shows Kazakhstan's ratio rising to 47.7% of GDP in 2024 and 51.7% in 2025, and Uzbekistan's to 15.5% and 16.1%, respectively, but carries no updated figures for the three Baltic states, Kyrgyzstan, Tajikistan, or Turkmenistan in any year since. Despite this growth from a starting point of no capital markets in 1991, the general level of stock market development remains below that of developed economies across all eight countries.
+
+EU accession bound Estonia, Latvia, and Lithuania to a common regulatory floor, beginning with mandatory IFRS adoption for listed companies from 2005, and roughly a decade later the bloc's NFRD, followed by the CSRD, extended that floor to non-financial reporting. Central Asia's own move to IFRS was not far behind, if less uniform across the five countries: Kazakhstan, Kyrgyzstan, and Tajikistan adopted mandatory IFRS within roughly the same decade as the EU mandate [@Golubeva.2023]. ESG-specific disclosure regulation started from a later point than financial reporting everywhere in this sample. Unlike financial reporting, ESG-specific disclosure regulation shows a sharper regional divide: an EU-anchored, binding regime in the Baltic states against a set of more recent, and so far less comprehensive, instruments in Central Asia.
+
+This regulatory divergence has not been studied systematically. Golubeva's [-@Golubeva.2023] review of accounting research on the former Soviet Union calls the region an "under-researched context" for international accounting scholarship (p. 7), a gap that persists despite a parallel Russian-language literature the English-language field largely does not engage with. Research on ESG disclosure specifically is similarly thin: Ali et al.'s [-@Ali.2017] survey of seventy-six empirical studies on ESG-disclosure determinants finds no former Soviet republic among them. Where ESG research on the region exists, it takes the form of single-country studies without a systematic comparator [@Orazalin.2020; @Katenova.2024; @Crotty.2016].
+
+The trajectories traced above nonetheless converge on a research setting worth examining directly. The scale and shape of the resulting institutional gap can be seen directly in the eight sample countries' 2024 scores on the World Bank's [-@WorldBank.2025c] Worldwide Governance Indicators, plotted by country in Figure 1. It shows the lowest-scoring Baltic country outperforming the highest-scoring Central Asian country on every dimension, without exception — the two regions occupy entirely separate ranges on each of the six indicators, with no overlap between them. The margin, however, is not uniform. The two regions sit closest together on Political Stability, where the Baltic average (0.75) exceeds the Central Asian average (−0.17) by roughly one point on the indicators' approximately −2.5-to-2.5 scale, and furthest apart on Voice and Accountability, where the gap more than doubles, to over two and a half points (1.26 versus −1.27), with Control of Corruption, Government Effectiveness, Regulatory Quality, and Rule of Law falling in between. Central Asia and the Baltic states, in other words, are not dramatically different in basic political order — freedom from violent or unconstitutional challenges to government — but sit close to opposite ends of the global distribution on the extent to which citizens can hold government accountable, obtain information, and rely on an independent media and civil society.
+
+Three decades after a common starting point, Central Asia and the Baltic states have reached different points in post-socialist transition — and points that the literature reviewed above has not yet compared systematically. The remainder of this chapter turns from this shared historical and institutional backdrop to the specific regulatory architecture that has emerged in each region: @sec-ca examines capital market and reporting regulation in Central Asia, and @sec-baltics the corresponding framework in the Baltic states.
+
+## Capital markets and reporting regulation in Central Asia {#sec-ca}
+
+Kazakhstan, Uzbekistan, Kyrgyzstan, Tajikistan, and Turkmenistan inherited the shared administrative apparatus described in @sec-transition, and their post-independence orientation remained regional rather than global: all five joined the CIS — Turkmenistan as an associate member only — and trade and labor-migration ties to Russia remain substantial even three decades later [@WorldBank.2025b; @OrganisationforEconomicCooperationandDevelopment.2025].
+
+Central Asian capital markets, built after 1991, reflect that same regional rather than international orientation: small relative to the economies they serve and held mainly by banks and retail investors rather than the institutional funds that are one of the sources of demand for corporate disclosure [@AstanaInternationalFinancialCentre.2026]. That gap in the investor base matters for what follows: where markets themselves generate little pressure to disclose, regulation and external financing relationships appear to matter more — a pattern this section traces through each country's markets before turning to the disclosure rules built on top of them.
+
+Central Asia's capital markets correspond broadly to the economic variation across the five countries. Kazakhstan's markets are the most developed of the five, and their structure reflects a deliberate choice to run two systems side by side: the Kazakhstan Stock Exchange (KASE), operating under Kazakhstan's own civil-law framework since 1993, and the Astana International Exchange (AIX), built on English common law and aimed explicitly at international investors. Kazakhstan's equity-market capitalization relative to GDP has been volatile rather than steadily rising — falling from 33% of GDP in 2021 to 20% in 2022, before rising to almost half of GDP in 2024 [@WorldBank.2025].
+
+Uzbekistan and Kyrgyzstan illustrate two different paths to a similar early stage of development. Uzbekistan's capital market has grown through a state-coordinated privatization agenda: market capitalization of listed domestic companies rose from 7.5% of GDP in 2020 to 15.5% in 2024 [@WorldBank.2025], and total equity-market capitalization now stands at roughly \$22 billion — though free float amounts to only around \$350 million, a gap that shapes liquidity, price discovery, and the market's capacity to absorb new issuance [@AstanaInternationalFinancialCentre.2026]. Kyrgyzstan operates two exchanges of different character: the Kyrgyz Stock Exchange (KSE) dates to the country's first privatization wave in the mid-1990s, while a second exchange, Stock Exchange of Kyrgyzstan – BTS (BTS), has operated only intermittently since a 2011 agreement to consolidate all trading onto the KSE platform was signed but never fully implemented. Trading volume on KSE accelerated sharply in 2024–2025: turnover through June 2025 (roughly \$573.9 million) had already exceeded the full-year 2023 total (roughly \$328.7 million), though this growth is overwhelmingly primary-market-driven — new issuance accounted for roughly \$550 million of that turnover, indicating the surge reflects new listings rather than a deepening of secondary liquidity [@AstanaInternationalFinancialCentre.2026]. Tajikistan's Central Asian Stock Exchange (CASE) lists no equities at all, and Turkmenistan's Ashgabat Stock Exchange (AGB) carries the smallest listed population in the region, concentrated in large state-owned financial institutions.
+
+Notably, every regional exchange's website is available in Russian alongside the local language, a continuity with the Soviet linguistic legacy that has outlasted the political one, while English coverage is thinner still — consistent with markets still built around domestic and regional rather than international investors, notwithstanding Kazakhstan's ambition, through AIX, to be the exception.
+
+Financial-disclosure regulation, as distinct from the ESG-specific regulation discussed below, is more mature across the region and developed alongside the markets themselves. All five countries require periodic financial reports, event-driven disclosure of material facts, and IFRS or an equivalent standard for banks and larger issuers. Kyrgyzstan, Tajikistan, and Uzbekistan set out this regime directly in their securities-market statutes, with the structure similar enough across the three countries that a shared legislative origin is a plausible explanation, though this thesis has not traced the drafting history of each statute directly. Kazakhstan's Law on the Securities Market [-@ParliamentoftheRepublicofKazakhstan.2003] delegates most periodic and event-driven disclosure to KASE's own listing and disclosure rules; and Turkmenistan imposes an obligation to disclose audited annual financial statements in its accounting law and disclosure of material-fact notices in its securities market law.
+
+Against this comparatively long-established financial-disclosure baseline, ESG-specific disclosure regulation is, across the region as a whole, still at an early stage of development — despite the region hosting some prominent ESG-relevant concerns of its own (e.g., the Aral Sea disaster, forced labor in cotton production), with voluntary exchange guidance in Kazakhstan and Kyrgyzstan generally preceding any binding requirement of comparable reach (Table 1). Kazakhstan is the most established regime by this measure, combining an early state-adjacent mandate (2018) with a binding exchange rule (2022). Uzbekistan and Kazakhstan have gone further in specifying not only that ESG disclosure must occur but how, increasingly referencing internationally recognized standards, including variants of the International Sustainability Standards Board framework, with Uzbekistan's regime additionally specifying third-party assurance requirements. Kyrgyzstan's binding rules remain sector-specific, and its more general ESG regulation remains at the action-plan stage as of this writing [@Economist.KG.2026]. Tajikistan and Turkmenistan have no ESG-specific regulation of either kind; Turkmenistan's 2024 Investment Climate Statement states plainly that its government does not promote or require ESG disclosure [@UnitedStatesDepartmentofState.2024].
+
+Consistent with the weak market-driven demand documented above, the firms first targeted by ESG regulation in the region are not the ones most exposed to investor scrutiny, but financial-sector firms and state-owned enterprises (Table 1) — companies that are likely to already report to a prudential supervisor or to international lenders with their own sustainability conditions attached; this existing infrastructure is one plausible reason regulators extended ESG requirements to them before listed companies generally, though the decrees themselves state no rationale.
+
+That same external channel recurs in how the rules themselves came to exist: international financial institutions and donors appear repeatedly in the drafting history of Kazakhstan's ESG framework, both as technical advisors and as financiers whose own reporting conditions apply independently of domestic law (for example, for AIX Sustainability Reporting Guidance; Kazakhstan's Roadmap on implementing IFRS S1 and S2). The EBRD alone reports cumulative investment in Kazakhstan of almost €9.84 billion since 1993, and has separately supported climate-disclosure reforms at the country's largest state energy producer [@EuropeanBankforReconstructionandDevelopment.2023] — consistent with the broader finding, in the literature on developing and transition economies, that disclosure is driven more by external investors and lenders than by domestic regulatory enforcement [@Singhania.2023]. Domestic triggers are not entirely absent in the region, however: comparing mining-sector corporate social responsibility in Kyrgyzstan and Tajikistan, @Kotilainen.2015 find that despite a shared Soviet legacy the two countries' approaches differ, with Kyrgyzstan's shaped more by locally organized community pressure and Tajikistan's more by the expectations of central government.
+
+## Capital markets and reporting regulations in the Baltic states {#sec-baltics}
+
+The Baltic states left Soviet rule within the same narrow window as the Central Asian republics described in @sec-ca — Lithuania in March 1990, Estonia and Latvia in August 1991 — and integrated into a single external bloc: all three joined the European Union in 2004 and, in stages between 2011 and 2015, the euro area. A European Commission study modeling the joint dynamics of the three economies finds their annual GDP growth correlated at 87–91% with one another — markedly higher than each country's correlation with the wider EU or with Russia — and attributes this to shared trade and labor-market links, a banking sector dominated by the same Nordic groups across all three countries, and a foreign-investor base that treats the region as a single market with one local headquarters rather than three separate ones [@EuropeanCommission:DirectorateGeneralforEconomicandFinancialAffairs.2017].
+
+The three national exchanges — Nasdaq Tallinn, Nasdaq Riga, and Nasdaq Vilnius — operate jointly as Nasdaq Baltic, trading on a shared platform and sharing joint regional indices, even though each retains its own listing rules and remains supervised by its own national regulator. The stated rationale is to let issuers from three small national markets be traded, indexed, and evaluated as a single regional pool, facilitating cross-border investment that none of the three could attract as effectively alone [@Skrutkowski.2025]. Even pooled, all three remain classified as frontier markets — the lowest tier MSCI and FTSE use to rank markets by size, liquidity, and openness to foreign investors — with capitalization-to-GDP ratios below their Western European peers [@Skrutkowski.2025].
+
+Where Central Asia's ESG regulation traces to country-specific mandates, exchange guidance, and individual donor relationships, the Baltic states inherited a single, externally imposed EU framework — one that applies uniformly regardless of any individual market's size or liquidity. The core periodic-disclosure obligation traces to the Transparency Directive (2004/109/EC), transposed across the bloc by 2007: listed issuers in all three countries must publish an annual report — audited financial statements, a management report, and a statement of management responsibility — together with a half-yearly report, with IFRS-consolidated accounts and statutory audit required throughout. Because the requirement derives from one directive rather than three independently drafted statutes, it is materially uniform across the three countries, unlike the more independently developed regimes described in @sec-ca.
+
+ESG-specific disclosure regulation followed the same EU-wide track, arriving earlier and covering more ground than Central Asian regimes described before. The NFRD, transposed around its 2016 deadline, required large public-interest entities exceeding 500 employees to include a non-financial statement — covering, at minimum, environmental, social and employee matters, human rights, and anti-corruption — in their management report, with assurance left optional. Its replacement, the CSRD, extended the obligation to a wider population of entities, required reporting against a common set of detailed EU sustainability standards rather than open-ended disclosure, and made assurance mandatory.
+
+These requirements were loosened from 2025 onward, when an EU "Omnibus" package raised the mandatory-reporting thresholds, a change the Commission originally estimated would remove around 80% of in-scope companies [@EuropeanCommission.2025]. This narrowing reflects an EU-wide reassessment of compliance costs relative to the burden on mid-sized firms; a leaked 2025 negotiating position placed Estonia and Latvia among the member states pushing for the narrower threshold 2027 [@HoganLovellsCadwalader.2025], and Lithuania's 2026 amendments provide an option for certain companies to no longer provide information on sustainability issues in their management reports for financial years 2025–2026 [@MinistryofFinanceoftheRepublicofLithuania.2026]. Despite the region's binding regulatory design, an awareness gap persists: a Swedbank survey found 63% of Latvian businesses uncertain whether the CSRD applied to them at all [@Swedbank.2023].
+
+@sec-ca and @sec-baltics together show two regions that shared the same starting point in 1991 but arrived at different institutional, regulatory, and capital-market environments. @sec-framework turns this institutional contrast into the thesis's theoretical framework and expectations.
+
+## Theoretical framework and expectations {#sec-framework}
+
+The divergence between Central Asia and the Baltic states motivates two related questions: how disclosure practices differ between firms in the two regions, and which firm-level characteristics and regulatory exposures are associated with these disclosure choices — including whether those associations themselves differ across the two regions.
+
+At the country level, the regulatory instrument in force is the natural starting point. Institutional theory treats a binding disclosure requirement as a form of coercive pressure, under which firms are expected to comply because non-compliance carries a cost, whether regulatory or reputational [@DiMaggio.1983]. Where such a mandate is in force, ESG disclosure is expected to be more common among the firms it covers. Non-binding guidance issued by a regulator or exchange works through a different, normative channel instead: it signals what is expected of firms without attaching a formal penalty to non-compliance, so any effect on behavior would run through firms conforming to an articulated norm rather than meeting a legal obligation. I therefore expect firms under a binding mandate to disclose more, and voluntary guidance to have a positive association with disclosure, relative to the absence of regulatory instrument at all.
+
+Institutional background may, however, complicate this prediction, and the literature offers reasons to expect it to work in either direction. One view treats weak formal institutions as a setting in which voluntary disclosure can substitute for them. Khanna and Palepu's [-@Khanna.1997] institutional-voids framework develops this logic for corporate strategy in emerging markets: where reliable financial reporting, independent analysts, and enforceable investor protections are scarce, firms build credibility with investors and business partners through reputation and demonstrated reliability rather than through the institutional infrastructure that performs this function in more developed markets. If this holds, disclosure in Central Asia could be higher than its regulatory regime alone would suggest, narrowing or even reversing the gap between the regions.
+
+A second view treats institutional strength as a complement to disclosure rather than a substitute for it. @Doidge.2007, who examine firm-level governance and state investor protection, find that firm characteristics explain proportionally more of the variation in firms' transparency and disclosure ratings in countries with stronger investor protection, which they read as some evidence of complementarity, and almost none of it in less-developed countries. A disclosure rule, on this logic, can shift firm behavior only where it is credibly enforced: @Krueger.2024 argue that the liquidity benefits of mandatory ESG disclosure regimes depend on enforcement by a country's formal institutions — rule of law, government effectiveness, legal quality — because, as @Christensen.2013 had earlier shown for IFRS mandates, a disclosure rule introduced without credible enforcement is unlikely to improve the information environment it targets. Applied here, this view would expect any association between a mandate and disclosure to be weaker precisely where formal institutions are weaker, which in the sample means less disclosure in Central Asia.
+
+Regarding firm-level characteristics, the literature on developing and transition economies stresses external audiences: reporting is shaped by foreign investors and international buyers rather than by domestic publics [@AzizulIslam.2008; @Ali.2017]. This is consistent with an information-asymmetry argument. International investors and buyers cannot observe firms directly and cannot rely on domestic monitoring, so they depend on public disclosure to assess them. I therefore expect firms with greater international exposure, understood as ties to foreign capital, markets, and buyers, to be associated with more ESG disclosure.
+
+State ownership is a further firm-level characteristic that may be associated with disclosure. In economies with a government-centric past, state ownership remains common among established firms, and such firms may disclose differently from privately owned ones. Government ownership has been associated with more disclosure in developing countries (see @Ali.2017 for a review), which can be read as public-accountability pressure. It may also work in the other direction: where the main stakeholder is the state itself, investor-oriented reporting matters less, and @Crotty.2016 shows that firms' social activity in post-Soviet Russia is often directed at local communities and, in some cases, at regional authorities.
+
+Soviet-era origin, associated with the Soviet legacy that companies in Central Asia and Baltic states can still hold, likewise points both ways. From an organizational imprinting perspective, firms founded under central planning retain paternalistic practices oriented toward employees and local communities rather than external reporting [@Koleva.2010; @Crotty.2016], which suggests less disclosure. From a legitimacy perspective, however, long-established firms are often large and more visible to the public and to foreign investors, which suggests more disclosure.
+
+Firm size and industry sensitivity, which the literature commonly links with more disclosure [@Ali.2017; @Brammer.2006], are expected to show similar associations in Central Asia and the Baltics. Profitability's relationship with disclosure is less settled, with studies reporting both positive and null results [@Ali.2017; @Reverte.2009; @Tagesson.2009], so no specific sign is predicted for this association.
+
+# Data and Empirical Strategy {#sec-data}
+
+## Sample {#sec-sample}
+
+The initial sample covers publicly listed companies on ten stock exchanges in eight countries, with Kazakhstan and Kyrgyzstan having two stock exchanges each, and other sample countries — Uzbekistan, Turkmenistan, Tajikistan, Estonia, Latvia and Lithuania — having one. All exchanges are listed in Table 2. The unit of observation is the firm, and the reference period is fiscal year 2024 (FY2024).
+
+The starting point is the list of equities on each exchange, retrieved in June 2026. Sample exchanges do not publish historical listing counts, so these lists represent the current population, which I restrict to firms listed by FY2024. Table 2, Panel A, reports each step by exchange. The initial lists contain 367 observations (Central Asia 298, Baltic states 69). I first remove foreign listings, non-equity instruments, and financial companies. I keep only one observation per firm, excluding multiple listings of the same firm. I then exclude 19 observations from market segments outside the regulated market, to which the disclosure regime does not apply. These are issuers on Nasdaq First North, a multilateral trading facility.
+
+Finally, I restrict the sample to firms listed in FY2024, the reference period. This includes the exclusion of 14 firms that began trading after FY2024, as well as the exclusion of eight firms of the Stock Exchange of Kyrgyzstan – BTS — for which no listing date is available, so their listing status in FY2024 cannot be verified.
+
+The resulting sample contains 141 firms from six countries (Central Asia 103, Baltic states 38): Kazakhstan, Kyrgyzstan and Uzbekistan in Central Asia, and Estonia, Latvia and Lithuania in the Baltics (Table 2, Panel A). Tajikistan and Turkmenistan contribute no firm. This set of firms produces a disclosure sample that serves to describe disclosure and regulatory exposure. It requires only that a firm's listing status in FY2024 can be verified and its reports can be located, so that the coverage of financial and ESG reporting refers to every eligible listed firm, including firms with incomplete data. The regression analysis additionally requires ownership, financial statement and regulatory classification data. Table 2, Panel B, therefore continues from the disclosure sample and removes six firms for which these data cannot be collected. The remaining regression sample of 135 firms (Central Asia 98, Baltic states 37) is used for the descriptive statistics and the regression analysis.
+
+## Firm-level data and variables {#sec-firmdata}
+
+I check public databases for financial (Orbis) and ESG (LSEG ESG) information; however, these cover only part of the sample: matching by ISIN, LSEG ESG returns data for two sample firms, and Orbis for 53. I therefore collect ESG reports, financial reports, and other data manually from company websites, exchange disclosure pages, state reporting depositories and national business registers, and use Orbis only as a complementary source for incorporation dates. All firm-level variables refer to FY2024 and are defined in Appendix A.
+
+*Disclosure.* For each firm, I check whether different types of reports for FY2024 are publicly available on the company websites, the issuer pages of the exchanges, and, where one exists, the state reporting depositories.
+
+I first check if a firm publishes an integrated annual report and assign 1 to the *Integrated Annual Report* variable if it does so. Then, if the annual report contains ESG-related information, *ESG in Integrated Annual Report* equals one. Another ESG indicator is *ESG Standalone Report* that equals one if the firm publishes an ESG or sustainability report independently of any other report. *ESG Disclosure*, the main outcome variable, equals one if either of these two ESG indicators equals one. A firm with both a standalone report and ESG information in its annual report therefore counts under both components and once under *ESG Disclosure*. Additionally, I check the availability of financial statements for descriptive reasons and create a binary variable *Annual Financial Disclosure*. It equals one if the firm published an annual financial report for FY2024.
+
+The indicators capture whether information is available, not its extent, quality or external assurance.
+
+*Ownership.* I use *Foreign Ownership* as a proxy for international exposure. I also collect firms' cross-listing status and participation in the UN Global Compact, but these yield too few observations for the subsequent regression analyses.
+
+In each sample country, public entities disclose their shareholder structures; however, the minimum stake that each national disclosure regime requires to be reported differs by country: 5% in Kazakhstan, Kyrgyzstan, Latvia and Lithuania, 10% in Estonia and 20% in Uzbekistan. Stakes below the threshold are not observed, and the indicators therefore rest on comparable but not identical thresholds across countries. I take the most recent list of shareholders available at the end of 2024 and construct *State Ownership* and *Foreign Ownership* as binary variables. *State Ownership* equals one if any direct shareholder, reported by a firm or national registers, is a state body or an entity whose only shareholder is the state. *Foreign Ownership* equals one if such a shareholder is a foreign legal entity or an individual identified as non-domestic in the source.
+
+*Soviet-era origin.* *Soviet-Era Firm* is a binary proxy for Soviet legacy and equals one if the firm's operational origin predates 1992 — the time of USSR collapse. National business registers often record the date of registration of a firm in the independent state rather than the date of its original establishment, so a register-based founding year alone does not seem to be a reliable indicator — it returned zero Soviet-originated firms in Central Asia and only a handful in the Baltics. I therefore combine three sources. The first is the founding year, hand-collected from national business registers and company documents. The second is the incorporation year reported by Orbis. The third is an AI-assisted trace of the firm's history: it accepts a firm as Soviet-era if a named Soviet-era predecessor entity or a documented privatization pathway is identified. [^1] *Soviet-Era Firm* equals one if any of three sources places the origin before 1992, and zero if every source places it in 1992 or later.
+
+[^1]: The AI referred to throughout this thesis is Claude Sonnet 5.5 (Anthropic).
+
+*Industry.* Industry affiliation follows the Industry Classification Benchmark (ICB). Nasdaq Baltic already classifies its issuers by ICB. For Central Asian firms, exchange profiles and business registers record activities in heterogeneous national classifications or free text, so I assign each firm to an ICB industry on the basis of its primary business activity, using an AI-assisted classification. *Sensitive Industry* equals one if the firm belongs to the ICB industries Energy, Basic Materials or Utilities, and zero otherwise, following @Jain.2026.
+
+*Financial variables.* I take total assets and net income for the period from the FY2024 financial statements that the firm publishes, and convert both to euros at the central bank exchange rate at year-end. *ln(Total Assets)*, the natural logarithm of total assets, measures firm size, and *ROA*, net income divided by total assets, measures profitability.
+
+## Regulatory and country-level data {#sec-regdata}
+
+*Regulatory data.* ESG regulatory exposure is measured at the firm level from a hand-collected dataset of ESG disclosure instruments. I collect laws, decrees, regulator resolutions, and exchange listing rules and guidance from the official portals of each country and exchange. Table 1 lists every instrument identified and separates mandatory instruments (Panel A) from voluntary guidance (Panel B).
+
+I classify an instrument as mandatory if it is binding on a defined population of firms and specifies ESG content. Comply-or-explain provisions in corporate governance codes are classified as voluntary. A firm can satisfy such a provision by explaining non-disclosure, so it does not require the disclosure document to contain ESG content.
+
+I assign an instrument to a firm if the firm falls within its scope and the instrument applies to FY2024 reporting; therefore, instruments that take effect after FY2024 appear in Table 1 — included for descriptive completeness — but apply to no firm. Four binary variables result. *Mandatory ESG (State)* equals one if a state-level mandate applies to the firm, *Mandatory ESG (Exchange)* equals one if the firm's exchange imposes a binding ESG listing rule, and *Mandatory ESG* equals one if either applies. *ESG Guidance (Exchange)* equals one if the firm's exchange has issued voluntary ESG reporting guidance for its listed firms. No state-level voluntary guidance identified applies to sampled firms. The scope conditions are assessed firm by firm and differ by instrument.[^2]
+
+[^2]: For example, I collect employee counts from annual reports of Baltic firms to identify those with more than 500 employees for which CSRD applies.
+
+Table 1 reports the number of sample firms in scope of each instrument. The obligation to publish annual financial statements applies to all listed firms in all sample countries (as discussed in @sec-ca and @sec-baltics), so I construct no firm-level mandate variable for financial disclosure.
+
+*Country-level data.* I attach country-level variables to each firm by its home country. *Region* is a factor that identifies whether the home country belongs to the Baltic states (Estonia, Latvia, Lithuania) or Central Asia (Kazakhstan, Kyrgyzstan, Uzbekistan, Tajikistan, Turkmenistan). Tajikistan and Turkmenistan contribute no firms to the sample, so in the regression sample the variable contrasts three Central Asian countries with three Baltic ones. Because it groups countries rather than measuring a specific characteristic, it serves as a broad proxy for systematic differences between the two groups of countries — including the institutional divergence documented in Figure 1, EU membership and market development, but also other persistent national features.
+
+The country characteristics comprise the six Worldwide Governance Indicators: *Control of Corruption*, *Government Effectiveness*, *Political Stability*, *Regulatory Quality*, *Rule of Law*, and *Voice and Accountability* [@WorldBank.2025c]. *Rule of Law* is the indicator carried into the firm-level analysis and measures the quality of contract enforcement, property rights, or the legal system, and reflects the strength of a country's legal institution with respect to the enforcement of regulations — a mechanism that the literature identifies as a condition for a disclosure regime to be effective [@Krueger.2024]. The other five dimensions are used to describe the institutional context and are defined in Appendix A.
+
+## Methodology {#sec-methodology}
+
+I use the sample and variables described in @sec-sample to @sec-regdata to estimate how firm-level characteristics and regulatory exposure are associated with ESG disclosure in the two regions, and how far these associations depend on the surrounding institutional environment. I estimate two types of specification: one that holds country-level factors fixed and identifies associations only from variation among firms within the same country, and one that instead estimates a country-level factor — *Region* or *Rule of Law* — directly, pooling firms across all countries. The outcome variable throughout is *ESG Disclosure*, a binary indicator, for which a logistic regression would ordinarily be the natural choice of estimator. However, no firm in Kyrgyzstan discloses ESG information, which produces complete separation for any specification that includes a Kyrgyz regulatory or country-level regressor and destabilizes standard logistic estimates. I therefore estimate a linear probability model as the primary specification instead. To recover a logit-based check despite this separation problem, I re-estimate the pooled specifications using Firth's penalized logistic regression, which corrects for it while remaining asymptotically equivalent to standard logit where separation does not arise.
+
+The core specification is $$
+\begin{aligned}
+\textit{ESG Disclosure}_{i,c} ={}& \beta_0 + \beta_1\,\textit{Mandatory ESG}_{i,c}
+  + \beta_2\,\textit{Foreign Ownership}_{i,c} \\
+&+ \beta_3\,\textit{State Ownership}_{i,c}
+  + \beta_4\,\textit{Soviet-Era Firm}_{i,c} \\
+&+ \beta_5\,\textit{Sensitive Industry}_{i,c} + \beta_6\,\textit{ln(Total Assets)}_{i,c} \\
+&+ \beta_7\,\textit{ROA}_{i,c} + \alpha_c + \varepsilon_{i,c},
+\end{aligned}
+\tag{1}
+$$
+
+where $\alpha_c$ denotes country fixed effects. Because $\alpha_c$ absorbs every characteristic that is constant within a country — including *Region*, *Rule of Law*, and any other country-level factor — the firm-level coefficients here are identified purely from variation among firms within the same country. I refer to this as the within-country specification.
+
+I also estimate the same equation without country fixed effects, replacing $\alpha_c$ with *Region* or *Rule of Law*. With no $\alpha_c$ left to absorb cross-country variation, the sample is effectively pooled across all countries, and the country-level variable's own association with disclosure can be estimated and compared directly against the firm-level associations. I refer to this as the between-country, or pooled, specification. Heteroskedasticity-robust (HC1) standard errors are used throughout, in both the within-country and pooled specifications.
+
+To examine whether the estimated associations between ESG disclosure and firm-level or regulatory characteristics differ between Central Asia and the Baltic states, I additionally test four interactions between a Central Asia indicator and, in turn, *Mandatory ESG*, *Foreign Ownership*, *State Ownership*, and *Soviet-Era Firm*. Each interaction is estimated in a separate regression that includes country fixed effects and controls for *Sensitive Industry*, *ln(Total Assets)*, and *ROA*. I use interactions rather than separate regional subsamples so that the full sample, rather than two smaller and noisier subsamples, is used for estimation.
+
+The continuous variables *ln(Total Assets)* and *ROA* are winsorized at the 5th and 95th percentiles to limit the influence of extreme values. All models are estimated in R.
+
+# Results {#sec-results}
+
+## Descriptive results {#sec-descriptive}
+
+Table 3 reports disclosure coverage across the full disclosure sample (N = 141, Table 2, Panel A), in raw counts by country and region, giving a full picture of disclosure across the sample's entire listed population. It is also the only place this compliance picture is visible: although publishing annual financial statements is a binding legal requirement in every sample country, compliance, captured by *Annual Financial Disclosure*, is close to universal but not perfect — five of the six countries report it for 100% of their firms, with Uzbekistan the sole exception at 93% (40 of 43 firms). This imperfection disappears, mechanically rather than substantively, once the sample is restricted to the 135 firms with complete data used in the regression analysis (Table 2, Panel B): because firms lacking financial-statement data are excluded from the regression sample by construction (@sec-sample), Table 4 shows *Annual Financial Disclosure* at 100% in every group, concealing the handful of non-compliant firms visible here.
+
+The near-universal financial-disclosure baseline does not extend to broader corporate reporting. Table 3 also reports *Integrated Annual Report* — a broader business report, distinct from the mandated financial statements — which is published by only 78 of the 141 firms overall. Within the regression sample, Table 4 shows this gap falls almost entirely along regional lines: *Integrated Annual Report* is disclosed by 41.8% of Central Asian firms against 100% of Baltic firms. Table 5's country-level breakdown shows this regional figure is not a shared Central Asian pattern, however: Kazakhstan publishes an *Integrated Annual Report* at a rate close to the Baltic countries (81.6%), while Uzbekistan (2.6%) and Kyrgyzstan (0%) publish almost none. The gap, like several others discussed below, is better read as a Kazakhstan-versus-the-rest-of-Central-Asia divide than as evidence of a region-wide corporate reporting culture.
+
+The country pattern in Table 3 tracks the regulatory backdrop established in Table 1. Kazakhstan's relatively high overall ESG disclosure (39 of 50 firms) sits against KASE's Main-market ESG rule, an exchange-level mandate; Lithuania's (16 of 19) and Estonia's (13 of 15) sit against the EU's state mandate. Latvia's ESG disclosure, by contrast, cannot be read against that same mandate: none of its four sampled firms are coded as subject to a binding mandate in the data, consistent with its low disclosure count (1 of 4). Uzbekistan (6 of 43) and Kyrgyzstan (0 of 10) sit at the other extreme, where no ESG disclosure requirement currently reaches the sampled firms in practice.
+
+Table 1, Panel B, documents a further regulatory layer — non-binding ESG guidance — that exists only in the two Central Asian markets with an exchange positioned to issue it (Kazakhstan: KASE, AIX; Kyrgyzstan: KSE). Kyrgyzstan offers a cleaner read on guidance alone, since KSE's guidance reaches all ten sampled firms there with no mandate in force: disclosure is nonetheless 0%, no higher than if no regulatory instrument existed at all. If anything, Uzbekistan — which has neither a guidance regime nor an operative mandate — shows a higher voluntary disclosure rate than Kyrgyzstan's. Descriptively, this offers no support for the guidance-specific channel I had expected, though with only ten Kyrgyz firms in the sample this comparison is suggestive rather than conclusive.
+
+Figure 2 decomposes each country's overall ESG disclosure rates by mandate status. Two patterns are worth drawing out beyond the country-by-country reading. First, compliance among mandated firms is imperfect even in the higher-disclosure countries: 14% of Kazakhstani firms and 5% of Lithuanian firms are mandated but do not disclose. Second, voluntary disclosure — firms disclosing without an obligation to do so — is not rare: it accounts for 28% of Kazakhstani firms, 47% of Estonian firms, 25% of Latvian firms[^3], and 26% of Lithuanian firms — precisely the four countries where a binding mandate is already in force for other firms. The second pattern was not anticipated in @sec-framework's expectations and is discussed further in @sec-supplementary.
+
+[^3]: Latvia's small sample (N = 4) means each firm accounts for 25 percentage points; the 25% figure reflects one voluntarily disclosing firm out of four.
+
+Untabulated checks suggest that, among the 85 non-mandated firms in the regression sample, voluntary disclosers (N = 33) differ from non-disclosers (N = 52) on three dimensions: they are larger (mean *ln(Total Assets)* of 18.5 vs. 16.7, significant at the 1% level), more likely to operate in an environmentally sensitive industry (60.6% vs. 25.0%), and less likely to be Soviet-era enterprises (24.2% vs. 67.3%). Foreign ownership and state ownership show no significant association (p = .143 and p = .369, respectively). A country-level breakdown shows these patterns are not evenly spread across the sample: the size difference holds in every country with a usable comparison, suggesting that larger firms self-select into disclosure broadly across the sample, while the remaining characteristics associated with voluntary disclosure cannot be generalized the same way across countries.
+
+The mirror comparison, among the 50 mandated firms, shows that compliant and non-compliant mandated firms are statistically indistinguishable across every characteristic checked. This comparison, however, rests on a small and unbalanced split — 42 compliant firms against only eight non-compliant ones, concentrated almost entirely in Kazakhstan — and should not be read as conclusive.
+
+Table 4 quantifies the region-level version of this gap on the final regression sample (N = 135, Table 2, Panel B). ESG disclosure is 35 percentage points lower in Central Asia than in the Baltics, and ESG disclosure embedded within the integrated annual report specifically is 39 points lower; the broader *Integrated Annual Report* variable discussed above shows the largest gap of the three. Table 4 also surfaces two compositional differences between the regions: Central Asian firms are far more likely to operate in environmentally sensitive industries (50.0% vs. 16.2%, p \< .01) and far more likely to be state-owned (39.8% vs. 18.9%, p \< .05). Firm size also differs modestly by region, with Central Asian firms somewhat smaller on average (mean *ln(Total Assets)* of 17.97 vs. 18.62, p \< .10), though *ROA* does not differ meaningfully between regions.
+
+Table 5 breaks these regional comparisons down by country and shows that several of them are carried by a subset of countries rather than shared evenly across the region: on *ESG Disclosure*, *State Ownership*, *Sensitive Industry*, and firm size alike, at least one country's value sits closer to the other region's countries than to its own regional average. *Soviet-Era Firm* is an exception: it shows no significant regional gap in Table 4 to begin with, consistent with its substantial variation within every country rather than clustering by country — so this pattern is common among the variables with a significant regional contrast, but not universal. These findings call for a qualified reading of *Region* as an analytical category: Central Asia and the Baltic states are meaningfully distinct in the aggregate, for the institutional and historical reasons documented in @sec-background, but the countries within each region are not interchangeable, and the regional contrasts reported here and in the analysis that follows are best read as describing the sample's central tendency rather than a trait uniformly shared by every country in each region.
+
+Table 6 introduces the correlation matrix. *ESG Disclosure* correlates most strongly with *ln(Total Assets)* (0.473), *Mandatory ESG* (0.439), and *Rule of Law* (0.417). Importantly for the design of the regression analysis, *Region* and *Rule of Law* are correlated at −0.982, close to perfect collinearity. Figure 1 illustrates that no sample country's *Rule of Law* score crosses the regional boundary, so the two variables partition the sample into essentially the same two groups. This means neither can be statistically separated from the other here — the empirical basis for treating *Region* and *Rule of Law* as mutually exclusive alternatives in the analysis that follows.
+
+## Results of the regression analyses {#sec-regressions}
+
+Although countries within each region share certain features at the macro level, *Region* is a coarse category for the firm-level drivers examined in this chapter — several of the regional contrasts in Table 4 are carried by a subset of countries rather than shared evenly across each region, as shown in Table 5. This concern bears directly on the country-fixed-effects specifications reported below, since with only six countries in the sample, a regressor's within-country identification depends on how many of those six actually vary on it. Table 5 makes this directly visible: a country whose mean on a binary variable is exactly 0 or 1 has no firms of the other kind, and so contributes no within-country variation for that variable at all.
+
+By this measure, *ln(Total Assets)*, *ROA*, and *Soviet-Era Firm* vary within every country, so their coefficients draw on the full sample. *Mandatory ESG*, by contrast, sits at exactly 0 in three of the six countries (Uzbekistan, Kyrgyzstan, and Latvia), leaving only Kazakhstan, Lithuania, and Estonia to identify its within-country coefficient; its exchange-issued component is at 0 everywhere except Kazakhstan. *Foreign Ownership* varies within five of the six countries, with Kyrgyzstan contributing no variation at all. Latvia's own sample is small enough to compound this on its own: *State Ownership* and *Sensitive Industry* are both at 0 within Latvia (Table 5), so its firms contribute no within-country variation to either coefficient. Where a coefficient's identification rests on these few countries, the findings that follow are better read as features of those countries' firms than as a general, sample-wide relationship, a point that recurs throughout this section.
+
+Table 7 reports the results for the full set of firm- and country-level determinants examined in this thesis. *Mandatory ESG* is associated with disclosure only between countries, not within them. The coefficient ranges from −0.091 to 0.064 across the country-fixed-effects columns (1)–(4), none of which is statistically significant, while in the pooled columns (5)–(9) it is positive and significant throughout. The same divide appears in the model's explanatory power: in the core specification, column (4), the covariates account for only 16.8% of the within-country variation in *ESG Disclosure* (Adj. R² within = 0.168) against 53.4% of the overall variation once country fixed effects are restored (Adj. R² overall = 0.534). Consistent with the coercive-pressure account of regulation [@DiMaggio.1983] and the country-level heterogeneity documented by @Doidge.2007, a binding mandate is associated with more disclosure only when compared across countries; it does not distinguish mandated from non-mandated firms within the same country, so regulation tracks differences between countries more closely than it accounts for differences among firms facing the same regulatory regime.
+
+The regional gap itself is large and persistent across the pooled specifications. *Region (Central Asia)* is negative and significant at the 1% level in columns (5)–(8), with coefficients between −0.286 and −0.363, so Central Asian firms are 29 to 36 percentage points less likely to disclose than Baltic firms. The gap is already present when only *Mandatory ESG* is controlled for (column 5) and is not smaller once firm characteristics are added (columns (6)–(8)). This does not support the substitution view in @sec-framework, under which weak formal institutions could narrow or reverse the gap, and it is consistent with the enforcement view. Column (9) replaces *Region* with *Rule of Law*, which is positive and significant (0.213, p \< .01). The coefficient averages over a heterogeneous Central Asian group, however: Kazakhstan's ESG disclosure rate (79.6%) is close to the Baltic rate (81.1%), whereas Uzbekistan's (15.4%) and Kyrgyzstan's (0%) are not (Tables 4 and 5).
+
+As additional evidence, I disaggregate *Mandatory ESG* into its state- and exchange-issued components, motivated by Krueger et al.'s [-@Krueger.2024] finding that government-issued mandates generate stronger effects than exchange-issued ones. That gradient is not reproduced here: in the pooled specification the two components are of comparable magnitude (state = 0.194, exchange = 0.239), and both are statistically insignificant under country fixed effects (p = .98 and p = .25, respectively). The exchange-issued component's within-country test is particularly limited, since it varies only within Kazakhstan, so this comparison speaks more to the two components' pooled magnitudes than to a powered within-country contrast.
+
+Firm-level controls largely follow their expected direction. *ln(Total Assets)* is positive and significant in every specification, country-fixed-effects and pooled alike — the only determinant in this thesis whose association with disclosure survives every specification, consistent with the expectation that firm size operates similarly across the two regions. *ROA* is not significant under country fixed effects, but is negative and marginally significant in the pooled columns (6)–(7), losing significance once *Soviet-Era Firm* and *Rule of Law* are added in columns (8)–(9).[^4] The negative sign runs counter to a resource-slack account of disclosure, under which higher profitability is associated with more disclosure because profitable firms have the economic means to produce it [@Tagesson.2009]. It is, however, consistent with a legitimacy-driven account, under which weaker financial performance is associated with more extensive non-financial disclosure [@Neu.1998] — though the coefficient's fragility across specifications means this should be read as suggestive rather than established.
+
+[^4]: The size and profitability results are unaffected by the choice of winsorization threshold: re-estimating every affected specification with ln(Total Assets) and ROA winsorized at the 1st/99th percentile instead of the 5th/95th shifts Mandatory ESG's coefficient by no more than 0.017 in any column, and leaves ln(Total Assets) and ROA's own signs and significance unchanged throughout.
+
+*Sensitive Industry* follows the same within/between pattern as *Mandatory ESG*: insignificant under country fixed effects (0.039–0.059) but positive and significant in every pooled column (0.210–0.237, p \< .01). Central Asia's higher sensitive-industry share (Table 4) does not explain this, since that composition would, if anything, bias the coefficient toward zero or negative, given the same region also discloses less overall. An untabulated country-by-sensitive-industry breakdown instead shows an uneven within-country relationship: it is essentially flat in Kazakhstan, which holds the largest share of sensitive-industry firms in the sample but shows almost no gap between its sensitive- and non-sensitive-industry firms' disclosure rates (80.0% vs. 78.6%), and pronounced instead in Uzbekistan, where sensitive-industry firms disclose far more often than non-sensitive ones (44.4% vs. 6.7%, on a small base of nine sensitive-industry firms). The pooled coefficient's significance draws more on this Uzbekistan-specific pattern than on a uniform, sample-wide legitimacy association.
+
+As a robustness check reported in full in Appendix B, re-estimating the pooled specifications with Firth's penalized logistic regression reproduces the same signs and significance pattern for every variable except *ROA*, whose marginal significance in Table 7 columns (6)–(7) does not survive; this indicates the within-country/between-country pattern reported above is not an artifact of the linear probability model's functional form, though *ROA*'s already-fragile result is sensitive to it.
+
+*Foreign Ownership* shows no association with disclosure in Table 7, which on its face disconfirms the international-exposure argument in @sec-framework. Table 8, which tests whether ESG drivers differ systematically between Central Asia and the Baltic states, shows why the pooled estimate is not statistically significant: it conceals two offsetting regional associations. *Foreign Ownership*'s own coefficient in column (2) is positive and significant (0.248, p \< .01), but its interaction with Central Asia is −0.459 (p \< .01), and the implied marginal effect for Central Asian firms is itself significantly negative (−0.212, 95% CI \[−0.412, −0.012\]) — a contrast drawn from Kazakhstan and Uzbekistan, since *Foreign Ownership* does not vary within Kyrgyzstan. International exposure is associated with more disclosure in the Baltics and with less in the two Central Asian countries where foreign-owned firms exist. This suggests that international exposure's effect on disclosure may itself be tied to the institutional environment, growing stronger where formal institutional enforcement is stronger, rather than operating through a mechanism in which foreign owners substitute for absent domestic pressure.
+
+The interaction of *Mandatory ESG* with Central Asia is negative and significant (−0.433, p \< .05). The implied marginal effect for Central Asian firms is −0.315 (95% CI \[−0.595, −0.035\]), against a positive but insignificant coefficient among Baltic firms (0.118). Within Central Asia, mandated firms therefore disclose less than non-mandated firms in the same country, conditional on size, industry and profitability. An enforcement account predicts a weaker association where formal enforcement is weaker, not a reversed one, so this result is consistent with that account in direction but exceeds what it predicts. Two features of the underlying data counsel caution, however. First, within Central Asia, *Mandatory ESG* is effectively a Kazakhstan-specific variable, since Kyrgyzstan and Uzbekistan contribute no mandated firms, so this interaction is closer to a Kazakhstan-versus-Baltics contrast than a general Central Asia pattern. Second, the underlying compliance gap rests on a small number of firms: seven of Kazakhstan's 32 mandated firms do not disclose, compared with one of 18 Baltic mandated firms. The interaction is statistically significant given its estimated standard error, but a raw gap of this size should not be over-interpreted as a stable, generalizable regional pattern.
+
+*State Ownership* shows little evidence of a stable, independent association with disclosure. It is null throughout the country-fixed-effects columns and in Table 8's region interaction, and negative but only marginally significant in one pooled Table 7 column (7, p \< .10) — a result fragile enough that it does not survive the addition of a further control, *Soviet-Era Firm*, in column (8). An additional country-by-state-ownership breakdown reveals that in every country with a usable comparison — Estonia, Kazakhstan, Lithuania, and Uzbekistan — state-owned firms disclose more often than non-state-owned firms, not less.[^5] The pooled result instead reflects Kyrgyzstan, where state ownership is both common (80% of firms) and disclosure is universally absent, pulling the pooled average in a direction no individual country's own comparison supports. Taken together, these results offer no support for an independent, negative *State Ownership* effect; if anything, the within-country evidence points modestly the other way.
+
+[^5]: In Estonia, 100% of state-owned firms disclose ESG information, compared to 84.6% of non-state-owned firms; in Kazakhstan, 81.8% compared to 78.9%; in Lithuania, 100% compared to 78.6%; and in Uzbekistan, 25.0% compared to 5.3%. Latvia has no state-owned firms at all under the applicable threshold.
+
+Net of current regulation and the other firm characteristics tested here, Soviet-era origin's relationship with disclosure is inconclusive at the firm level. *Soviet-Era Firm* is negative but not statistically significant under country fixed effects (−0.084, SE = 0.068) — an estimate imprecise enough that it cannot rule out a moderate within-country effect — while it is negative and significant in the pooled columns (8)–(9) of Table 7 and in the raw comparison of voluntary disclosers versus non-disclosers in @sec-descriptive (24.2% vs. 67.3% Soviet-era). Its interaction with Central Asia in Table 8 (−0.136) is not significant, so this pattern is not specifically tied to the regional split. Unlike *Mandatory ESG* and *Foreign Ownership*, *Soviet-Era Firm* varies within every country in the sample, so this inconclusiveness reflects a genuine lack of statistical power rather than a country-level identification gap — the within-country test is well-posed but underpowered, a more cautious reading than either confirming or dismissing an independent legacy effect.
+
+Overall, firm size is the only determinant whose association with disclosure holds unconditionally across the sample; every other firm characteristic examined here is either absent within countries or concentrated in a specific country's firms rather than shared broadly. *Mandatory ESG* and *Sensitive Industry* both show this pattern, each tracing to a different country — Kazakhstan for the mandate, Uzbekistan for industry exposure — rather than to Central Asia or the Baltics as a whole. *Foreign Ownership*'s null pooled estimate conceals a genuine regional split rather than an absence of any relationship; *State Ownership*'s results differ across specifications, but within every country with a usable comparison, state-owned firms disclose more than non-state-owned ones. *Soviet-Era Firm*'s association, though well-identified within every country, remains statistically underpowered. Taken together, these results point to country-level, and often single-country, factors as the more active source of the Baltic–Central Asia disclosure gap than any uniformly held firm characteristic — consistent with the broader finding that country characteristics dominate firm characteristics in explaining cross-country variation in disclosure and governance [@Doidge.2007]. In the next section, I test whether a related country-level pattern extends beyond the firms directly bound by it.
+
+## Supplementary analysis {#sec-supplementary}
+
+*Mandatory ESG*, studied in @sec-regressions, captures only a firm's own binding status; Figure 2, however, points to a pattern in which a substantive share of non-bound firms disclose ESG reports voluntarily. This share runs higher in the four countries where a mandate is in force for other firms — 28% in Kazakhstan, 47% in Estonia, 25% in Latvia, and 26% in Lithuania — than in the two countries with no mandate reaching any sampled non-financial firm, Uzbekistan (14%) and Kyrgyzstan (0%).
+
+This pattern is consistent with a normative or mimetic form of institutional isomorphism [@DiMaggio.1983]: firms operating alongside mandated peers may converge toward the same disclosure norm without being personally compelled to. @Christensen.2021 argue that mandated disclosure can generate this kind of positive spillover, though they do not test it themselves. Empirically, @Bochkay.2026 find support for a related peer mechanism in a setting of voluntary adoption of a sustainability reporting standard. Table 9 reports an additional analysis of a related question — whether disclosure among non-mandated firms responds to a binding mandate already in force for their peers.
+
+The sample is restricted to the 85 regression-sample firms not themselves subject to a binding ESG mandate (*Mandatory ESG* = 0). The regressor of interest, *Country ESG Mandate*, equals one for every firm in Kazakhstan, Estonia, Latvia, or Lithuania — the four countries where a binding mandate is in force for at least some firms — and zero for firms in Uzbekistan and Kyrgyzstan, regardless of whether that specific firm is itself bound by it. As in @sec-regressions, this variable's identification rests on a small number of countries: within Central Asia it isolates Kazakhstan from Uzbekistan and Kyrgyzstan, while within the Baltics all three countries fall on the same side and add no further within-region contrast, anchoring one pole of the comparison alongside Kazakhstan. *Region* and Country Fixed Effects are excluded from the specification for the same reason: both would absorb nearly all of the variation *Country ESG Mandate* depends on, since the four-versus-two split is nearly identical to the regional split, with Kazakhstan the only exception. *Rule of Law*, a continuous and country-specific score, retains more independent variation than *Region* would and, as in Table 7, is used in column (3) as its alternative.
+
+*Country ESG Mandate* is positive and significant across all three columns of Table 9, though its standard error nearly doubles in column (3) once *Rule of Law* is added (0.182 vs. 0.088–0.089). Variance inflation factors of 6.45 for *Country ESG Mandate* and 4.36 for *Rule of Law* indicate collinearity between the two, consistent with countries that regulate ESG disclosure also tending to score higher on institutional quality. This is enough to reduce precision in column (3), so the coefficient's continued significance there should be read cautiously rather than as confirmation that the mandate effect is independent of institutional quality.
+
+*ln(Total Assets)* remains positive and significant, as in the main analysis. *State Ownership* is positive throughout, strengthening from marginal significance in column (2) (0.115, p \< .10) to p \< .05 once *Rule of Law* is added in column (3) (0.143). This sits more comfortably with @sec-regressions's within-country finding — that state-owned firms disclose more often than non-state-owned firms in every country where the comparison is possible; the consistency is suggestive rather than a direct replication, since Table 9 estimates the relationship on a different sample (non-mandated firms only) with a different set of controls. *Soviet-Era Firm* is negative and significant in column (2) but not column (3), echoing its inconsistent survival across control sets in the main specification.
+
+The specification is also pooled by construction, and its reference category — firms with no country-level mandate at all — consists entirely of Uzbekistani and Kyrgyz firms. The coefficient is therefore, in part, a comparison between these two countries and the rest of the sample, not a fully general regulatory pattern.
+
+Two untabulated checks probe this further. First, Table 9 only includes firms that are not personally mandated, so on its own it cannot show whether exposure to a country-level mandate differs from being personally mandated or is merely a weaker version of the same thing. Re-estimating the model on the full sample, with *Mandatory ESG* and *Country ESG Mandate* entered together, tests this directly: a Wald test finds no statistically significant difference between the two coefficients (p = .666) — personally mandated firms and merely exposed, non-mandated firms in the same country disclose at statistically indistinguishable rates. This design therefore cannot separate a personal legal obligation from simply operating in a regulated environment; if anything, it suggests firms merely exposed to a mandate disclose nearly as often as those directly compelled by it.
+
+Second, since Kyrgyzstan's complete non-disclosure makes it a natural candidate to account for the result on its own, re-estimating the specification with Kyrgyzstan excluded — leaving Uzbekistan as the sole no-mandate country — leaves the coefficient large and significant (0.454, p \< .001, N = 75), indicating the pattern is not solely an artifact of Kyrgyzstan's zero. The reference category then rests on a single country, however, which narrows rather than eliminates the broader concern that unobserved country-specific factors, not mandate status specifically, could account for the result.
+
+Taken together, Table 9 extends the between-country pattern from Table 7. What matters for disclosure looks less like whether a specific firm is personally bound by a mandate, and more like whether that firm's country has one in force at all. This is consistent with a spillover, or isomorphic, account of how disclosure norms spread, and it holds up under two targeted checks — against a personally-mandated comparison group, and against Kyrgyzstan's exclusion. Given its reliance on a small number of countries and its exploratory origin, this should be read as an empirical foothold rather than a settled result.
+
+# Conclusion {#sec-conclusion}
+
+This thesis examined the disclosure environment of publicly listed firms in post-Soviet economies, with a focus on ESG reporting. It asked how corporate disclosure behavior differs between firms in the Baltic states and Central Asia, and which firm-level characteristics and regulatory exposures are associated with these differences. The question was addressed at three levels: how capital-market and reporting regulation differ between the regions, how financial and ESG disclosure differ between listed firms, and which firm-level characteristics and regulatory exposures are associated with ESG disclosure. The evidence comes from a hand-collected mapping of disclosure instruments in eight countries and from fiscal year 2024 data for 141 listed non-financial firms in six of them, of which 135 enter the regression analysis.
+
+At the institutional level, the regimes differ in ESG regulation but not in financial reporting. Every sample country requires listed firms to publish annual financial statements. ESG regulation is uniform and EU-anchored in the Baltic states, whereas in Central Asia it is country-specific, more recent, and narrower. Kazakhstan is the exception within its region. No binding requirement reaches a sampled firm in Uzbekistan or Kyrgyzstan, and Tajikistan and Turkmenistan have no ESG regulation for listed companies.
+
+The disclosure gap follows this pattern. Annual financial reports are published by 100 of 103 Central Asian firms and by all 38 Baltic firms, whereas ESG information is disclosed by 45 of 103 Central Asian firms and by 30 of 38 Baltic firms. The regional gap is therefore specific to ESG reporting and does not extend to the financial reporting that every country requires. It is also not a shared regional pattern: Kazakhstan's disclosure rate is comparable to that of the Baltic firms, while Uzbekistan's is low and Kyrgyzstan's is zero. Compliance among mandated firms is imperfect, and non-mandated firms disclose voluntarily more often in countries where a mandate exists for other firms.
+
+The regression analysis shows where the association with regulation lies. A binding mandate is positively associated with disclosure when firms are compared across countries but not when they are compared within the same country, so regulation tracks differences between countries more than differences among firms under the same regime. Central Asian firms are 32 to 36 percentage points less likely to disclose than Baltic firms after controlling for mandates and firm characteristics, and the gap is already present when only the mandate is controlled for. Associations also differ by region. In Central Asia, mandated firms disclose no more than non-mandated firms in the same country, an estimate that rests on Kazakhstan, and foreign ownership is associated with more disclosure in the Baltic states but with less in Central Asia. Firm size is the only characteristic positively associated with disclosure in every specification. Industry sensitivity and Soviet-era origin are associated with disclosure only in pooled specifications, and state ownership shows no stable association. A supplementary analysis of the 85 firms not bound by any mandate suggests that these firms disclose more where a mandate is in force for other firms in their country.
+
+These results speak to the expectations set out in @sec-framework. The substitution view, under which weak institutions leave room for voluntary disclosure to compensate, finds no support: the gap persists after controls. Coercive pressure operates only in a limited form, since a mandate is associated with more disclosure between countries but does not separate mandated from non-mandated firms within a country. The enforcement view is consistent with the size of the gap and with the weaker role of mandates in Central Asia, but the design cannot test it directly. *Region* and *Rule of Law* are correlated at −0.982 and cannot be separated in this sample. The same caution applies to the spillover result, which is consistent with firms following the norm of mandated peers but compares the Baltic states and Kazakhstan against Uzbekistan and Kyrgyzstan.
+
+Several limitations qualify these findings. First, the sample covers six countries in a single year, so country-level variables have few independent observations, several coefficients rest on two or three countries, and within Central Asia a mandate is effectively a Kazakhstan-specific variable. Tajikistan and Turkmenistan contribute no firms. Second, the cross-sectional design supports associations rather than causal effects, and it cannot separate regulation from the wider institutional environment that *Region* captures. Third, the disclosure indicators record whether a report is publicly available, not its extent, quality, or external assurance, so the results cannot distinguish substantive from symbolic disclosure. Fourth, the exchange lists were retrieved in June 2026 and restricted to firms listed by fiscal year 2024, so firms that left the exchanges after the reference year are not observed. Finally, ownership thresholds differ across countries, and the classification of Soviet-era origin and industry relies in part on AI-assisted coding.
+
+Three extensions follow for future research. First, panel data would allow comparisons of the same firms before and after a mandate takes effect. Uzbekistan's requirements for 2026 and 2027, which fall after the reference year of this thesis, and the narrowing of the EU reporting threshold provide settings for such designs and would address the limitation that country-level mandates cannot currently be separated from other country differences. Second, measures of disclosure extent, quality, and assurance would test whether the gap in availability documented here corresponds to a gap in substance. Third, adding countries and years, including other post-Soviet and transition economies, would help to separate regulation from institutional quality and would allow the spillover mechanism to be tested with data on peer firms.
+
+In summary, the regional gap between Central Asia and the Baltic states lies in ESG reporting and not in financial reporting, and it is associated more with the regulatory and institutional environment of a country than with the characteristics of individual firms. Whether this reflects enforcement, peer norms, or other persistent country differences is the question that further data on more countries and periods can answer.
+
+\pagebreak
+
+\restoregeometry
+\setcounter{table}{0}
+\renewcommand{\thetable}{\arabic{table}}
+\fancyfoot[R]{\makebox[0pt][r]{\thepage\hspace{1.5cm}}}
+
+# References {.unnumbered}
+
+\setlength{\parindent}{-0.2in}
+\setlength{\leftskip}{0.2in}
+\setlength{\parskip}{8pt}
+
+\noindent
+
+::: {#refs}
+:::
+
+\pagebreak
+
+\addcontentsline{toc}{section}{Tables and Figures}
+\includepdf[pages=-, fitpaper=true,pagecommand={\thispagestyle{fancy}}]{../output/tables-and-figures.pdf}
+

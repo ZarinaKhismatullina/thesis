@@ -76,14 +76,7 @@ log_info(
 
 # --- soviet_era ---------------------------------------------------------------
 #
-# Three-source triangulation, combined with OR logic: a firm is coded
-# Soviet-era (1) if ANY source indicates it, since each has different blind
-# spots - manual founding-year lookups and Orbis incorporation dates are
-# both frequently overwritten by a firm's later re-registration date, and
-# the AI check was run only as a residual check on firms neither of the
-# first two sources had already flagged. Coded 0 only when every source
-# that returned a determination agrees on 0; NA only when no source
-# returned any determination at all.
+# Three-source triangulation, combined with OR logic ---------------------------
 
 sample_all_listed <- sample_all_listed %>%
   mutate(
@@ -156,14 +149,6 @@ log_info(
 #   mandatory_esg          - any mandate applies, state or exchange (1/0)
 #   voluntary_esg_exchange - stock exchange publishes voluntary/recommended
 #                             ESG reporting guidance for listed firms (1/0)
-# Comply-or-explain regimes count as mandatory only when the duty attaches
-# automatically at listing. Regimes gated behind a firm's own voluntary
-# adoption of a corporate governance code (Kyrgyzstan's CCG, Latvia's CG
-# Code) are excluded from mandatory_esg_state, since adoption cannot be
-# traced per firm and the obligation is not automatic. Countries/exchanges
-# for which no regulatory source document was reviewed are coded 0 (no
-# mandate/guidance identified), not NA - absence of evidence, not missing
-# data.
 #
 # Combines two 1/0/NA flags: 1 if either is confirmed 1, NA if either input
 # is unresolved and neither is confirmed 1, 0 only if both are confirmed 0.
@@ -177,20 +162,10 @@ combine_flags <- function(a, b) {
 
 # --- mandatory_esg_state: country-level mandate --------------------------------
 
-# KAZ: Minister of National Economy Order (effective 2018) mandates ESG
-# disclosure for state-controlled JSCs that are also exchange-listed -
-# applies only to state-owned sample firms, not universally like the other
-# Central Asian countries. UZB: two state-level ESG mandates exist
-# (Cabinet of Ministers Resolution; Ministry of Economy/Finance PIE
-# Decision), but both take effect in 2026/2027 - after this sample's FY2024
-# cutoff - so they don't apply yet and UZB stays 0. KGZ/TKM/TJK: no
-# applicable state-level ESG mandate identified.
 esg_state_level <- c(UZB = 0, KGZ = 0, TKM = 0, TJK = 0)
 
-# EU CSRD/NFRD-style mandate for EST/LVA/LTU applies above an employee
-# threshold. NFRD (2017) and CSRD (2024) target the same >500-employee PIE
-# population - CSRD just replaces NFRD as the legal instrument in 2024, so
-# this rule is unchanged despite the regulation update.
+# EU CSRD/NFRD-style mandate for EST/LVA/LTU applies with a >500-employee
+# threshold.
 baltic_employee_threshold <- 500
 
 sample_all_listed <- sample_all_listed %>%
@@ -213,11 +188,8 @@ log_info(
   "of {sum(sample_all_listed$country_iso3 == 'KAZ')} firms under mandate (state-owned)."
 )
 
-
 # --- mandatory_esg_exchange: stock exchange listing-rule mandate ---------------
 
-# AIX: mandate applies only to ESG-Labelled/Green Bond issuers; none are in
-# this sample, so all AIX firms are coded 0. 
 esg_exchange_mandate <- c(
   AIX  = 0,  # no ESG/green bond issuers in sample
   KSE  = 0,  # mandate scoped to green/social/sustainability bond issuers only - sample is restricted to shares, so it never applies
@@ -315,14 +287,7 @@ log_info(
 # Whether ANY binding ESG disclosure mandate - state or exchange-issued - is
 # already in force for FY2024 in a firm's country, for at least part of its
 # listed non-financial firm population, regardless of whether this specific
-# firm is bound by it. KAZ: MNE Order (2018) and KASE Main-market rule (2022)
-# are both already binding. EST/LVA/LTU: CSRD (2024) is binding EU-wide. UZB:
-# both state mandates take effect only in 2026/2027. KGZ/TJK/TKM: no ESG
-# mandate identified that reaches this study's non-financial equity sample.
-# Every firm with Mandatory ESG = 1 also has this flag = 1, since its own
-# mandate is one reason the country counts as active; the flag additionally
-# covers non-mandated firms sharing a country with a mandated one, which is
-# what the regulatory spillover analysis tests.
+# firm is bound by it.
 esg_mandate_in_force_country <- c(
   KAZ = 1, UZB = 0, KGZ = 0, TJK = 0, TKM = 0, EST = 1, LVA = 1, LTU = 1
 )
@@ -340,10 +305,7 @@ log_info(
 # --- mandatory_fin_state: state-level annual financial report mandate --------
 
 # All eight state jurisdictions in the raw sample mandate disclosure of an
-# annual financial report for ordinary listed equity issuers. Scope carve-outs 
-# target sovereign issuers and small debt-only issuances, neither of which 
-# applies to this study's non-financial equity sample, so the mandate is coded 1 
-# for every firm currently in scope.
+# annual financial report for ordinary listed equity issuers.
 
 fin_state_mandate <- c(
   KAZ = 1, UZB = 1, KGZ = 1, TJK = 1, TKM = 1, EST = 1, LVA = 1, LTU = 1

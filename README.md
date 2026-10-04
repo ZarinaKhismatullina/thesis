@@ -15,7 +15,7 @@ The repository’s workflow infrastructure is adapted from the [`trr266/treat`](
 
 - `data`: Input and generated data.
 
-  - `external`: The hand-collected source data (`sample_all_listed_firms.csv`, `country_characteristics.csv`). See `data/data_readme.md` and `data/external/sample_all_listed_firms_README.md` for details.
+  - `external`: The hand-collected source data (`sample_all_listed_firms.csv`, `country_characteristics.csv`). See `data/data_readme.md` and `data/external/external_data_README.md` for details.
   - `generated`: Data derived from `external` by `prepare_data.R`.
 
 - `doc`: The Quarto source for the thesis itself (`paper.qmd`) and for the tables-and-figures document (`tables-and-figures.qmd`), plus supporting LaTeX fragments (`titlepage.tex`, `preamble.tex`, `declaration.tex`) and the bibliography (`references.bib`).
@@ -24,7 +24,7 @@ The repository’s workflow infrastructure is adapted from the [`trr266/treat`](
 
 ## How do I run the workflow and create the output?
 
-To run this workflow, you need R and Quarto installed, and the `make` and `yq` command-line tools available in your terminal.
+To run this workflow, you need R and Quarto installed, and the make and yq command-line tools available in your terminal.
 
 From the repository root, run:
 
